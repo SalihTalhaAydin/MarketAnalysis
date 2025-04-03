@@ -12,7 +12,7 @@ This script orchestrates the workflow:
 # --- Imports ---
 import pandas as pd
 import numpy as np
-from .data_loader import load_data  # Removed unused preprocess_data import
+from .data_loader import load_data
 # from .data_loader import preprocess_data as pproc # Keep if needed later
 
 # Using pandas_ta for technical indicators. Install: pip install pandas-ta
@@ -79,7 +79,7 @@ def preprocess_and_engineer_features(
         # Keep only the relevant ticker's data and flatten columns
         try:
             # Ticker should be at level 0 after the swaplevel in the fixture
-            processed_df = processed_df.xs(ticker, level=0, axis=1).copy()
+            processed_df = processed_df.xs(ticker, level=1, axis=1).copy()
             processed_df.columns = processed_df.columns.str.lower()
             print(f"Flattened MultiIndex columns for ticker {ticker}.")
         except KeyError:
@@ -243,7 +243,7 @@ def train_classification_model(features: pd.DataFrame, target: pd.Series):
 
 def predict_with_model(model, features_live: pd.DataFrame) -> np.ndarray:
     """
-    Makes predictions on new/live data using the trained classification model.
+    Generates class probabilities on new/live data using the trained model.
 
     Args:
         model: The trained scikit-learn compatible model object.
@@ -251,14 +251,17 @@ def predict_with_model(model, features_live: pd.DataFrame) -> np.ndarray:
                        Must have the same columns as the training features.
 
     Returns:
-        Numpy array of predictions (e.g., 0 or 1), or an empty array if fails.
+        Numpy array of shape (n_samples, n_classes) with probabilities
+        for each class, or an empty array if prediction fails.
+        Column 0: Probability of class 0 (e.g., down/flat)
+        Column 1: Probability of class 1 (e.g., up)
     """
     print("--- Making Predictions ---")
     if model is None:
         print("Error: Invalid model object provided for prediction.")
         return np.array([])
-    if not hasattr(model, 'predict'):
-        print("Error: Model object does not have a 'predict' method.")
+    if not hasattr(model, 'predict_proba'):
+        print("Error: Model object does not have a 'predict_proba' method.")
         return np.array([])
     if features_live.empty:
         print("Warning: No live features provided for prediction.")
@@ -269,18 +272,19 @@ def predict_with_model(model, features_live: pd.DataFrame) -> np.ndarray:
     try:
         # Ensure the model is fitted before predicting
         # (predict will raise NotFittedError if not)
-        predictions = model.predict(features_live)
-        print(f"Generated {len(predictions)} predictions.")
-        return predictions
+        # Use predict_proba to get probabilities for each class
+        probabilities = model.predict_proba(features_live)
+        print(f"Generated probabilities for {len(probabilities)} samples.")
+        return probabilities
     except NotFittedError:
-        print("Error: Cannot predict, the model provided is not fitted.")
+        print("Error: Cannot predict probabilities, the model is not fitted.")
         return np.array([])
     except ValueError as ve:
-        print(f"Error during prediction (ValueError): {ve}")
-        # Common issue: features_live columns mismatch training columns
+        print(f"Error during probability prediction (ValueError): {ve}")
+        # Common issue: features_live columns mismatch training columns, NaNs
         return np.array([])
     except Exception as e:
-        print(f"An unexpected error occurred during prediction: {e}")
+        print(f"Unexpected error during probability prediction: {e}")
         return np.array([])
 
 
@@ -448,17 +452,32 @@ def run_trading_strategy_analysis(
         print("Model training failed. Exiting.")
         return
 
-    # 5. Make Predictions (on test data using placeholder)
-    predictions = predict_with_model(model, test_features)
-    if len(predictions) != len(test_features):
-        print(f"Error: Prediction length ({len(predictions)}) mismatch "
+    # 5. Generate Probabilities (on test data)
+    probabilities = predict_with_model(model, test_features)
+    if len(probabilities) != len(test_features):
+        print(f"Error: Probability length ({len(probabilities)}) mismatch "
               f"with test features ({len(test_features)}).")
         return
+    # Display probability info (temporary - replace with actual use)
+    print(f"Probabilities shape: {probabilities.shape}")
+    if len(probabilities) > 0:
+        print("Sample Probabilities (Class 0, Class 1):")
+        print(probabilities[:5])  # Print first 5 probability pairs
 
-    # 6. Add predictions back to the test part of the DataFrame for backtesting
+    # --- TODO: Use probabilities in backtesting or decision logic ---
+    # For now, we still need a binary prediction for the basic backtester.
+    # We can derive this from probabilities, e.g., predict 1 if P(1) > 0.5
+    # Note: This threshold (0.5) could be optimized later.
+    # Get class 1 prediction (e.g., if P(1) > 0.5)
+    predictions = (probabilities[:, 1] > 0.5).astype(int)
+
+    # 6. Add derived binary predictions back for the *basic* backtester
     # Ensure alignment using the index
     data_for_backtest = featured_data.loc[test_features.index].copy()
-    data_for_backtest['prediction'] = predictions
+    data_for_backtest['prediction'] = predictions  # Use derived prediction
+    # Store probabilities as well for potential future use/analysis
+    data_for_backtest['probability_class_0'] = probabilities[:, 0]
+    data_for_backtest['probability_class_1'] = probabilities[:, 1]
 
     # 7. Backtest Strategy (using placeholder)
     # --- TBD: Define SL/TP rules (potentially optimize them later) ---
