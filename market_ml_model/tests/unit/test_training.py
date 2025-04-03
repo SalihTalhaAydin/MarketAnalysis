@@ -1,6 +1,10 @@
 import pytest
 import pandas as pd
-from sklearn.ensemble import RandomForestClassifier
+# from sklearn.ensemble import RandomForestClassifier # Replaced
+try:
+    import lightgbm as lgb
+except ImportError:
+    lgb = None  # Handle case where lightgbm might not be installed
 from sklearn.exceptions import NotFittedError
 
 # Adjust the import path based on your project structure
@@ -22,11 +26,13 @@ def test_train_classification_model(sample_featured_data):
 
     assert model is not None
     # Check specific model type if desired, though the function might change
-    assert isinstance(model, RandomForestClassifier)
+    assert lgb is not None, "LightGBM is required for this test"
+    assert isinstance(model, lgb.LGBMClassifier)
     # Check if model is fitted by trying to predict or checking attributes
     try:
         # Check a fitted attribute (specific to RandomForest)
-        assert hasattr(model, 'estimators_')
+        # Check a fitted attribute specific to LightGBM
+        assert hasattr(model, 'booster_')
         # Or try predicting
         model.predict(features.iloc[[0]])
     except NotFittedError:

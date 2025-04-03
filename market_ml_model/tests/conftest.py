@@ -95,22 +95,34 @@ def sample_yfinance_multiindex_data() -> pd.DataFrame:
 
 @pytest.fixture
 def sample_featured_data() -> pd.DataFrame:
-    """Creates a sample DataFrame with engineered features and target."""
-    dates = pd.to_datetime(['2023-01-05', '2023-01-06', '2023-01-07',
-                            '2023-01-08', '2023-01-09', '2023-01-10'])
+    """Creates a larger sample DataFrame with features and target (30 rows)."""
+    num_rows = 30
+    start_date = '2023-01-01'
+    dates = pd.date_range(start=start_date, periods=num_rows, freq='D')
+    np.random.seed(43)  # Use a different seed for variety
+
+    # Generate more realistic-looking data
+    base_price = 100 + np.cumsum(np.random.randn(num_rows) * 0.5)
     data = {
-        'open': [104, 105, 104.5, 106, 107, 106.5],
-        'high': [106, 106, 106.5, 107, 108, 107.5],
-        'low': [103, 104, 104, 105, 106, 106],
-        'close': [105.5, 104.5, 106, 106.5, 107.5, 107],
-        'volume': [1150, 1250, 1100, 1300, 1200, 1350],
-        'SMA_20': [103, 103.5, 104, 104.5, 105, 105.5],
-        'RSI_14': [60, 55, 65, 70, 75, 72],
-        'return': [0.01, -0.01, 0.015, 0.005, 0.01, -0.005],
-        'close_lag1': [104, 105.5, 104.5, 106, 106.5, 107.5],
-        'target_direction': [0, 1, 1, 1, 0, 0]  # Example target
+        'open': base_price + np.random.randn(num_rows) * 0.2,
+        'high': base_price + np.abs(np.random.randn(num_rows) * 0.5) + 0.1,
+        'low': base_price - np.abs(np.random.randn(num_rows) * 0.5) - 0.1,
+        'close': base_price + np.random.randn(num_rows) * 0.3,
+        'volume': 1000 + np.random.randint(100, 1000, size=num_rows),
+        'SMA_20': base_price - 1 + np.random.rand(num_rows) * 2,
+        'RSI_14': 50 + np.random.randn(num_rows) * 15,
+        'return': np.random.randn(num_rows) * 0.01,
+        'close_lag1': base_price + np.random.randn(num_rows) * 0.3,
+        # Generate target based on close price change
+        'target_direction': (np.random.rand(num_rows) > 0.5).astype(int)
     }
     df = pd.DataFrame(data, index=dates)
+
+    # Ensure OHLC consistency
+    df['high'] = np.maximum.reduce([df['high'], df['open'], df['close']])
+    df['low'] = np.minimum.reduce([df['low'], df['open'], df['close']])
+    df['RSI_14'] = df['RSI_14'].clip(0, 100)  # Clip RSI
+
     df.index.name = 'Date'
     return df
 

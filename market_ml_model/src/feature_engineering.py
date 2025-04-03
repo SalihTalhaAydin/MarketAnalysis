@@ -29,32 +29,69 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame | None:
         print("Error: Input DataFrame is empty/None for feature engineering.")
         return None
 
+    if not isinstance(df.index, pd.DatetimeIndex):
+        print("Error: Index must be DatetimeIndex for time features.")
+        # Attempt conversion if possible, otherwise return None
+        try:
+            df.index = pd.to_datetime(df.index)
+            print("Converted index to DatetimeIndex.")
+        except Exception as e:
+            print(f"Failed to convert index to DatetimeIndex: {e}")
+            return None
+
     processed_df = df.copy()  # Work on a copy
 
     # --- Feature Engineering Steps ---
+
+    # --- Feature Engineering Steps ---
+
     if ta:
         print("Calculating indicators using pandas_ta...")
         # Example Indicators using pandas_ta:
         try:
             # Simple Moving Average (SMA)
-            processed_df.ta.sma(length=20, append=True)  # Appends 'SMA_20'
-            processed_df.ta.sma(length=50, append=True)  # Appends 'SMA_50'
+            # Shorter SMAs for scalping
+            processed_df.ta.sma(length=5, append=True)   # Appends 'SMA_5'
+            processed_df.ta.sma(length=10, append=True)  # Appends 'SMA_10'
 
             # Relative Strength Index (RSI)
-            processed_df.ta.rsi(length=14, append=True)  # Appends 'RSI_14'
+            # Relative Strength Index (RSI)
+            # Shorter RSI period
+            processed_df.ta.rsi(length=9, append=True)   # Appends 'RSI_9'
 
             # Bollinger Bands
             # Appends 'BBL_20_2.0', 'BBM_20_2.0', 'BBU_20_2.0', 'BBB_20_2.0'
-            processed_df.ta.bbands(length=20, std=2, append=True)
+            # Shorter Bollinger Bands period
+            # Appends 'BBL_10_2.0', 'BBM_10_2.0', 'BBU_10_2.0', 'BBB_10_2.0'
+            processed_df.ta.bbands(length=10, std=2, append=True)
 
             # Average True Range (ATR) - useful for stops/volatility
-            processed_df.ta.atr(length=14, append=True)  # Appends 'ATRr_14'
+            # Shorter ATR period
+            processed_df.ta.atr(length=10, append=True)  # Appends 'ATRr_10'
+
+            # --- Add More Scalping-Relevant Indicators ---
+            # MACD (Defaults: 12, 26, 9)
+            # Appends MACD_12_26_9, MACDh_12_26_9, MACDs_12_26_9
+            processed_df.ta.macd(append=True)
+
+            # Stochastic Oscillator (%K, %D) - Use shorter periods
+            # Appends STOCHk_14_3_3, STOCHd_14_3_3 (default) -> Let's shorten
+            # Stochastic Oscillator (%K, %D) - Use shorter periods
+            # Appends STOCHk_5_3_3, STOCHd_5_3_3
+            processed_df.ta.stoch(k=5, d=3, smooth_k=3, append=True)
+
+            # Volume SMA (Simple Moving Average of Volume)
+            if 'volume' in processed_df.columns:
+                processed_df.ta.sma(close='volume', length=20, prefix='VOL',
+                                    append=True)  # Appends VOL_SMA_20
+            else:
+                print("Warning: 'volume' col not found, skipping Volume SMA.")
+
             print("pandas_ta indicators calculated.")
         except Exception as e:
             print(f"Error calculating pandas_ta indicators: {e}")
-            # Decide if you want to continue without indicators or stop
-            # return None # Or just continue
-
+            # Stop processing if indicators fail
+            return None
     else:
         print("Warning: pandas_ta not available. Skipping indicators.")
 
@@ -70,13 +107,26 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame | None:
     else:
         print("Warning: 'close' column not found, skipping close_lag1.")
 
-    # --- Define Target Variable (Example: Predict next period's direction) ---
-    # Target = 1 if next period's close > current close, 0 otherwise
-    # Important: This creates a dependency on future data (close price of t+1).
-    # When training, ensure features (X) only use data up to time t,
-    # and the target (y) is based on data from time t+1.
+    # Example: Volume Rate of Change (ROC) - 5 period
+    if 'volume' in processed_df.columns:
+        processed_df['volume_roc'] = processed_df['volume'] \
+                                        .pct_change(periods=5)
+    else:
+        print("Warning: 'volume' col not found, skipping volume_roc.")
+
+    # --- Add Time-Based Features ---
+    # Ensure index is DatetimeIndex (checked at the beginning)
+    processed_df['hour'] = processed_df.index.hour
+    processed_df['minute'] = processed_df.index.minute
+    # Consider dayofweek if running over multiple days:
+    # processed_df['dayofweek'] = processed_df.index.dayofweek
+
+    # --- Define Target Variable (Predict direction 5 periods ahead) ---
+    # Target = 1 if close 5 periods later > current close, 0 otherwise
+    # Important: Ensure features (X) only use data up to time t.
+    target_shift = -5
     if 'close' in processed_df.columns:
-        target_condition = (processed_df['close'].shift(-1) >
+        target_condition = (processed_df['close'].shift(target_shift) >
                             processed_df['close'])
         processed_df['target_direction'] = target_condition.astype(int)
     else:
