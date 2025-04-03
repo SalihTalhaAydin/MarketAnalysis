@@ -15,8 +15,10 @@ def predict_with_model(model, features_live: pd.DataFrame) -> np.ndarray:
     Returns:
         Numpy array of shape (n_samples, n_classes) with probabilities
         for each class, or an empty array if prediction fails.
-        Column 0: Probability of class 0 (e.g., down/flat)
-        Column 1: Probability of class 1 (e.g., up)
+        Based on the mapping in model_training.py (-1->0, 0->1, 1->2):
+        Column 0: Probability of class 0 (Stop Loss hit)
+        Column 1: Probability of class 1 (Time Barrier hit)
+        Column 2: Probability of class 2 (Take Profit hit)
     """
     print("--- Making Predictions ---")
     if model is None:

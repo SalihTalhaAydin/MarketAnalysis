@@ -30,7 +30,7 @@ DEFAULT_SYMBOL = "AAPL"  # Example stock symbol
 DEFAULT_TIMEFRAME = "1m"  # Changed to 1-minute for scalping
 # Dates for data loading (last 7 days for 1m data)
 today = datetime.date.today()
-start_date_obj = today - timedelta(days=7)
+start_date_obj = today - timedelta(days=7)  # 7 days (yfinance 1m limit)
 DEFAULT_START_DATE = start_date_obj.strftime("%Y-%m-%d")
 DEFAULT_END_DATE = today.strftime("%Y-%m-%d")
 
@@ -62,21 +62,34 @@ def run_trading_strategy_analysis(
         return
 
     # 3. Engineer Features
-    featured_data = engineer_features(preprocessed_data)
+    # Pass SL/TP multipliers and max hold period to feature engineering
+    # These are defined later in the WFV setup section
+    # Scalping-specific Triple Barrier parameters
+    atr_multiplier_sl = 1.0  # Tighter SL (was 2.0)
+    atr_multiplier_tp = 1.5  # Tighter TP (was 3.0)
+    max_holding_period = 3   # Shorter hold period (was 5)
+
+    featured_data = engineer_features(
+        preprocessed_data,
+        atr_multiplier_tp=atr_multiplier_tp,
+        atr_multiplier_sl=atr_multiplier_sl,
+        max_holding_period=max_holding_period
+    )
     if featured_data is None or featured_data.empty:
         print("Failed to engineer features. Exiting analysis.")
         return
 
     # 4. Separate features (X) and target (y)
-    if 'target_direction' not in featured_data.columns:
-        print("Error: 'target_direction' column not found after features.")
+    target_col_name = 'triple_barrier_label'  # New target column
+    if target_col_name not in featured_data.columns:
+        print(f"Error: '{target_col_name}' column not found after features.")
         return
 
     # Define columns to exclude from features (target, raw OHLCV, etc.)
     # Adjust based on actual features engineered and model requirements.
     cols_to_drop_for_features = [
         'open', 'high', 'low', 'close', 'volume',  # Raw prices often dropped
-        'target_direction'                         # Target variable itself
+        target_col_name                            # Target variable itself
         # Add other columns not for features (e.g., intermediate 'return')
         # 'return' # Example if 'return' was only intermediate
     ]
@@ -86,7 +99,7 @@ def run_trading_strategy_analysis(
         if col in featured_data.columns
     ]
     features = featured_data.drop(columns=cols_to_drop_for_features)
-    target = featured_data['target_direction']
+    target = featured_data[target_col_name]
 
     # --- Walk-Forward Validation Setup ---
     print("\n--- Setting up Walk-Forward Validation ---")
@@ -100,9 +113,12 @@ def run_trading_strategy_analysis(
 
     # ATR SL/TP Parameters
     atr_col = 'ATRr_10'      # Column name for ATR from feature engineering
-    atr_multiplier_sl = 2.0  # SL = 2 * ATR
-    atr_multiplier_tp = 4.0  # TP = 4 * ATR
-    prob_threshold = 0.55    # Confidence threshold for signals
+    # Scalping-specific Triple Barrier parameters (defined above, used here)
+    # atr_multiplier_sl = 1.0 # Defined earlier
+    # atr_multiplier_tp = 1.5 # Defined earlier
+    prob_threshold = 0.65    # Increased confidence threshold (was 0.52)
+    slippage_pct = 0.0005   # Example: 0.05% slippage per trade side
+    # max_holding_period defined earlier before calling engineer_features
 
     if atr_col not in featured_data.columns:
         print(f"Error: ATR column '{atr_col}' not found in featured data. "
@@ -144,8 +160,8 @@ def run_trading_strategy_analysis(
         test_features = features.iloc[start_test_idx:end_test_idx]
         # Keep original data + target + ATR for backtest evaluation
         test_data_fold = featured_data.iloc[start_test_idx:end_test_idx].copy()
-        # For ATR calculation
-        train_data_fold = featured_data.iloc[start_train_idx:end_train_idx]
+        # train_data_fold was previously used for ATR calculation, now unused.
+        # train_data_fold = featured_data.iloc[start_train_idx:end_train_idx]
 
         if train_features.empty or test_features.empty:
             print(
@@ -177,22 +193,34 @@ def run_trading_strategy_analysis(
             start_train_idx += step_size
             initial_train_size = end_train_idx - start_train_idx
             continue
-        if probabilities.shape[1] < 2:
+        # Expect probabilities for 3 classes: -1 (SL), 0 (Time), 1 (TP)
+        if probabilities.shape[1] < 3:
             print(
-                f"Error: Probabilities shape mismatch Fold {fold_number}. "
-                "Skipping."
+                f"Error: Probabilities shape mismatch (expected 3 classes) "
+                f"Fold {fold_number}. Got shape {probabilities.shape}. "
+                f"Skipping."
             )
             start_train_idx += step_size
+            # Recalculate for expanding window logic
             initial_train_size = end_train_idx + step_size - start_train_idx
             continue
 
         # Generate Predictions (Signals) from Probabilities
-        predicted_classes = [
-            1 if prob_up > prob_threshold else
-            -1 if prob_down > prob_threshold else
-            0
-            for prob_down, prob_up in probabilities[:, :2]
-        ]
+        # Generate Predictions (Signals) based on Triple Barrier probabilities
+        # Assumes model.predict_proba() returns probs for classes [-1, 0, 1]
+        # Index 0: P(SL = -1)
+        # Index 1: P(Time = 0)
+        # Index 2: P(TP = 1)
+        # Generate Predictions (Signals) based on Triple Barrier probabilities
+        # Index 0: P(SL = -1), Index 1: P(Time = 0), Index 2: P(TP = 1)
+        predicted_classes = []
+        for prob_sl, prob_time, prob_tp in probabilities:
+            if prob_tp > prob_threshold:
+                predicted_classes.append(1)  # Signal Long
+            elif prob_sl > prob_threshold:
+                predicted_classes.append(-1)  # Signal Short
+            else:
+                predicted_classes.append(0)  # Signal Hold
 
         # Add predictions to the test data subset for backtesting
         if len(predicted_classes) == len(test_data_fold):
@@ -205,46 +233,8 @@ def run_trading_strategy_analysis(
             initial_train_size = end_train_idx - start_train_idx
             continue
 
-        # 7. Calculate Dynamic SL/TP based on Training ATR
-        print("Calculating dynamic SL/TP based on training ATR...")
-        # Get the last valid ATR value from the training period
-        last_training_atr = (
-            train_data_fold[atr_col].dropna().iloc[-1]
-            if not train_data_fold[atr_col].dropna().empty
-            else None
-        )
-
-        if last_training_atr is None or last_training_atr <= 0:
-            print(
-                f"Warning: Invalid train ATR ({last_training_atr}) for Fold "
-                f"{fold_number}. Skipping backtest."
-            )
-            sl_decimal, tp_decimal = None, None  # Indicate no SL/TP
-        else:
-            # Approximate SL/TP % using the first 'close' price in the test
-            # fold as a reference entry price.
-            # Limitation: Doesn't adapt dynamically within the fold.
-            first_close_test = test_data_fold['close'].iloc[0]
-            if first_close_test > 0:
-                sl_decimal = (
-                    (atr_multiplier_sl * last_training_atr) / first_close_test
-                )
-                tp_decimal = (
-                    (atr_multiplier_tp * last_training_atr) / first_close_test
-                )
-                print(f"  Training ATR: {last_training_atr:.4f}")
-                print(
-                    f"  Approx SL %: {sl_decimal*100:.2f}% | "
-                    f"Approx TP %: {tp_decimal*100:.2f}%"
-                )
-            else:
-                print(
-                    f"Warning: Invalid first close price ({first_close_test}) "
-                    f"in test fold {fold_number}. Cannot calc SL/TP %. "
-                    "Skipping."
-                )
-                sl_decimal, tp_decimal = None, None
-
+        # 7. SL/TP calculation is now handled dynamically in backtest_strategy.
+        #    based on ATR multipliers.
         # 8. Backtest Strategy (on current test fold with dynamic SL/TP)
         print("Running backtest for fold...")
         # Define unique output path per fold (optional)
@@ -254,8 +244,11 @@ def run_trading_strategy_analysis(
 
         performance = backtest_strategy(
             data_with_predictions=test_data_fold,  # Pass the fold data
-            stop_loss_pct=sl_decimal,
-            take_profit_pct=tp_decimal,
+            # Pass ATR multipliers directly now
+            atr_multiplier_sl=atr_multiplier_sl,
+            atr_multiplier_tp=atr_multiplier_tp,
+            atr_col=atr_col,  # Pass the ATR column name
+            slippage_pct_per_trade=slippage_pct,  # Pass slippage
             output_trades_path=trades_output_filename  # Or None
         )
 
