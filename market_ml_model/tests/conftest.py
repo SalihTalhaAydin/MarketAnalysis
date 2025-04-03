@@ -65,6 +65,32 @@ def sample_multiindex_raw_data() -> pd.DataFrame:
     # Reorder columns to group by metric
     df_unstacked = df_unstacked.swaplevel(0, 1, axis=1).sort_index(axis=1)
     return df_unstacked
+# --- Add this fixture to conftest.py ---
+
+
+@pytest.fixture
+def sample_yfinance_multiindex_data() -> pd.DataFrame:
+    """
+    Creates a sample raw MultiIndex DataFrame mimicking yfinance output
+    (Metric at level 0, Ticker at level 1).
+    """
+    tickers = ['AAPL', 'MSFT']
+    metrics = ['Open', 'High', 'Low', 'Close', 'Volume']
+    dates = pd.to_datetime(['2023-01-01', '2023-01-02', '2023-01-03'])
+    index = pd.MultiIndex.from_product([dates, tickers],
+                                       names=['Date', 'Ticker'])
+    data = np.random.rand(len(index), len(metrics)) * 100
+    df = pd.DataFrame(data, index=index, columns=metrics)
+    # Unstack to get the yfinance-like format
+    df_unstacked = df.unstack(level='Ticker')
+    # Rename columns slightly to match yfinance (e.g., ('Close', 'AAPL'))
+    # Important: NO swaplevel here, keep Metric at level 0, Ticker at level 1
+    df_unstacked.columns = pd.MultiIndex.from_tuples(
+         [(metric, ticker) for metric in metrics for ticker in tickers]
+     )
+    # Reorder columns to group by metric (yfinance standard)
+    df_unstacked = df_unstacked.sort_index(axis=1, level=0)
+    return df_unstacked
 
 
 @pytest.fixture

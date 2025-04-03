@@ -76,15 +76,40 @@ def preprocess_and_engineer_features(
     # --- Standardize Column Names (lowercase for pandas_ta) ---
     # Handle potential MultiIndex from yfinance if multiple tickers were loaded
     if isinstance(processed_df.columns, pd.MultiIndex):
-        # Keep only the relevant ticker's data and flatten columns
-        try:
-            # Ticker should be at level 0 after the swaplevel in the fixture
-            # Use level=0 to select the ticker after swaplevel
-            processed_df = processed_df.xs(ticker, level=0, axis=1).copy()
-            processed_df.columns = processed_df.columns.str.lower()
-            print(f"Flattened MultiIndex columns for ticker {ticker}.")
-        except KeyError:
-            print(f"Error: Ticker {ticker} not found in MultiIndex columns.")
+        print(f"Attempting to extract data for ticker '{ticker}' "
+              f"from MultiIndex...")
+        # Check if ticker is at level 1 (standard yfinance format)
+        if ticker in processed_df.columns.get_level_values(1):
+            try:
+                # Select columns where level 1 matches the ticker
+                idx = pd.IndexSlice
+                processed_df = processed_df.loc[:, idx[:, ticker]].copy()
+                # Columns like ('Open','AAPL'). Drop ticker level (level 1).
+                processed_df.columns = processed_df.columns.droplevel(1)
+                processed_df.columns = processed_df.columns.str.lower()
+                print(f"Successfully extracted data for {ticker} "
+                      f"from column level 1.")
+            except Exception as e:
+                print(f"Error extracting ticker {ticker} from level 1: {e}")
+                return None
+        # Check if ticker is at level 0 (current test fixture format)
+        elif ticker in processed_df.columns.get_level_values(0):
+            try:
+                # Use xs for level 0 selection
+                processed_df = processed_df.xs(ticker, level=0, axis=1).copy()
+                processed_df.columns = processed_df.columns.str.lower()
+                print(f"Successfully extracted data for {ticker} "
+                      f"from column level 0.")
+            except KeyError:  # Should not happen if check passed, but safe
+                print(f"Error: Ticker {ticker} in level 0 but xs failed.")
+                return None
+            except Exception as e:
+                print(f"Error extracting ticker {ticker} from level 0: {e}")
+                return None
+        else:
+            print(f"Error: Ticker {ticker} not found in MultiIndex columns "
+                  f"at level 0 or 1.")
+            print(f"Available columns: {processed_df.columns}")
             return None
     else:
         # Assume single index columns, convert to lowercase

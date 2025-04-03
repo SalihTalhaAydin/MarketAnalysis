@@ -92,6 +92,40 @@ def test_preprocess_and_engineer_features_multiindex(
     assert 'return' in processed_df.columns
     assert 'target_direction' in processed_df.columns
 
+# --- Add this test to test_preprocessing.py ---
+
+
+def test_preprocess_and_engineer_features_yfinance_multiindex(
+    sample_yfinance_multiindex_data
+):
+    """Test feature engineering handling yfinance-style MultiIndex input."""
+    ticker = "MSFT"  # Ticker exists in the fixture
+    processed_df = preprocess_and_engineer_features(
+        sample_yfinance_multiindex_data.copy(), ticker
+    )
+
+    assert processed_df is not None
+    assert isinstance(processed_df, pd.DataFrame)
+    assert not isinstance(processed_df.columns, pd.MultiIndex)  # Flattened
+    assert not processed_df.isnull().any().any()
+
+    # Check for indicators conditionally based on pandas_ta availability
+    try:
+        import pandas_ta as ta
+    except ImportError:
+        ta = None
+
+    if ta:
+        assert ('sma_20' in processed_df.columns
+                or 'SMA_20' in processed_df.columns)
+    else:
+        assert ('sma_20' not in processed_df.columns
+                and 'SMA_20' not in processed_df.columns)
+
+    assert 'close' in processed_df.columns  # Ensure basic columns are present
+    assert 'return' in processed_df.columns
+    assert 'target_direction' in processed_df.columns
+
 
 def test_preprocess_and_engineer_features_multiindex_ticker_not_found(
     sample_multiindex_raw_data
