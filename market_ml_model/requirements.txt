@@ -1,10 +1,23 @@
+# Core Data Handling
 pandas
 numpy
+
+# Machine Learning (Optional - used in placeholders or future work)
 scikit-learn
+
+# Data Visualization (Optional - common for analysis)
 matplotlib
 seaborn
-# Add other libraries as needed, e.g.:
+
+# Market Data & Technical Analysis
+yfinance
+ta          # Technical Analysis Library (used in data_loader)
+pandas-ta   # Pandas TA wrapper (used in main_strategy)
+
+# Add other specific ML/DL libraries below if needed:
 # tensorflow
 # torch
-yfinance
-ta
+# xgboost
+#
+# Testing
+pytest

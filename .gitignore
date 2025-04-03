@@ -101,9 +101,8 @@ dmypy.json
 # Cython debug symbols
 cython_debug/
 
-# VSCode settings
+# IDE / Editor specific settings
 .vscode/
-
 # Editor settings
 .idea/
 
@@ -111,5 +110,12 @@ cython_debug/
 .DS_Store
 Thumbs.db
 
-# Project specific
+# --- Project Specific ---
+# Ignore data files (potentially large or sensitive)
 market_ml_model/data/
+
+# Ignore saved models (if applicable and large)
+# market_ml_model/models/
+
+# Ignore notebooks checkpoints (already covered by .ipynb_checkpoints)
+# market_ml_model/notebooks/.ipynb_checkpoints/
