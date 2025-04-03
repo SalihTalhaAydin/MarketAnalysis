@@ -79,7 +79,8 @@ def preprocess_and_engineer_features(
         # Keep only the relevant ticker's data and flatten columns
         try:
             # Ticker should be at level 0 after the swaplevel in the fixture
-            processed_df = processed_df.xs(ticker, level=1, axis=1).copy()
+            # Use level=0 to select the ticker after swaplevel
+            processed_df = processed_df.xs(ticker, level=0, axis=1).copy()
             processed_df.columns = processed_df.columns.str.lower()
             print(f"Flattened MultiIndex columns for ticker {ticker}.")
         except KeyError:
@@ -204,6 +205,11 @@ def train_classification_model(features: pd.DataFrame, target: pd.Series):
 
     print(f"Training with Features shape: {features.shape}")
     print(f"Training with Target shape: {target.shape}")
+
+    # Check for NaNs before training
+    if features.isnull().any().any() or target.isnull().any():
+        print("Error: NaN values detected in features or target for training.")
+        return None
 
     # Instantiate the model (example hyperparameters)
     # Consider tuning these parameters later (e.g., using GridSearchCV)
@@ -331,7 +337,7 @@ def backtest_strategy(
 
     # Calculate daily returns of the asset
     df = data_with_predictions  # Use shorter alias
-    df['daily_return'] = df['close'].pct_change()
+    df['daily_return'] = df['close'].pct_change(fill_method=None)
 
     # Calculate strategy returns (hold asset when signal is 1, else 0 return)
     # Shift prediction by 1 (trade based on previous day's signal)
@@ -362,8 +368,14 @@ def backtest_strategy(
     # Count trades (entry points: where signal changes from 0 to 1)
     # Ensure signal is integer type first
     df['signal'] = df['signal'].fillna(0).astype(int)
-    entries = (df['signal'] == 1) & (df['signal'].shift(1) == 0)
-    num_trades = entries.sum()
+    # Count entries: where signal changes 0->1 OR first valid signal is 1
+    entries = ((df['signal'] == 1) & (df['signal'].shift(1) == 0))
+    # Check if the very first signal (after NaNs are dropped) is 1
+    if not df.empty and df['signal'].iloc[0] == 1:
+        # Manually add 1 trade if the first action is a buy
+        num_trades = entries.sum() + 1
+    else:
+        num_trades = entries.sum()
 
     print("Basic backtesting logic complete.")
     performance_summary = {
