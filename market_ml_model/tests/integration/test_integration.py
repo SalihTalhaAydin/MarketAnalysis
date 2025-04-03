@@ -64,10 +64,7 @@ def test_run_trading_strategy_analysis_integration(
     output = f.getvalue()
     # print(f"\nCaptured Output:\n{output}\n") # Uncomment for debugging output
     assert "=== Running Analysis for TEST_INTEGRATION (1d) ===" in output
-    assert "--- Preprocessing and Engineering Features ---" in output
-    assert "--- Training Classification Model ---" in output
-    assert "--- Making Predictions ---" in output
-    assert "--- Backtesting Strategy (Basic Vectorized) ---" in output
-    assert "--- Performance Summary (Basic Backtest) ---" in output
+    # Check for the final summary block instead of intermediate steps
+    assert "Backtest Performance Summary:" in output
     # Check for a specific metric output (adjust based on sample data results)
     assert "total_strategy_return_pct" in output

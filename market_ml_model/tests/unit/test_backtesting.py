@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 
 # Adjust the import path based on your project structure
-from market_ml_model.src.main_strategy import backtest_strategy
+from market_ml_model.src.backtesting import backtest_strategy
 
 # Fixture (sample_featured_data) is automatically discovered from conftest.py
 

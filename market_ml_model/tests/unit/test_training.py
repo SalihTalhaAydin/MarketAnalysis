@@ -4,7 +4,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.exceptions import NotFittedError
 
 # Adjust the import path based on your project structure
-from market_ml_model.src.main_strategy import train_classification_model
+from market_ml_model.src.model_training import train_classification_model
 
 # Fixture (sample_featured_data) is automatically discovered from conftest.py
 

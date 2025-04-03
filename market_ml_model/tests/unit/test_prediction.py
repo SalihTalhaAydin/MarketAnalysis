@@ -5,7 +5,7 @@ from sklearn.ensemble import RandomForestClassifier
 # from sklearn.exceptions import NotFittedError # Not used directly
 
 # Adjust the import path based on your project structure
-from market_ml_model.src.main_strategy import predict_with_model
+from market_ml_model.src.prediction import predict_with_model
 
 # Fixtures (sample_trained_model, sample_featured_data) are automatically
 # discovered from ../conftest.py

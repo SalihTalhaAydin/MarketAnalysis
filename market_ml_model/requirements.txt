@@ -1,6 +1,7 @@
 # Core Data Handling
 pandas
 numpy
+setuptools  # Added for pkg_resources dependency
 
 # Machine Learning (Optional - used in placeholders or future work)
 scikit-learn
