@@ -17,6 +17,7 @@ setup(
         "pandas-datareader>=0.10.0",  # Added from requirements.txt
         "scipy>=1.9.0",  # Added from requirements.txt
         "statsmodels>=0.13.0",  # Added from requirements.txt
+        "PyYAML>=6.0",  # Added for YAML config loading
     ],
     extras_require={
         "full": [

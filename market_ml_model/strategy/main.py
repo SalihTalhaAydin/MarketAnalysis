@@ -14,6 +14,7 @@ The implementation supports multiple assets, timeframes, and strategies.
 
 import concurrent.futures
 import json
+import yaml  # Added YAML import
 import logging
 import os
 import uuid
@@ -523,20 +524,32 @@ class StrategyConfig:
     @classmethod
     def load_config(cls, filepath: str) -> Optional["StrategyConfig"]:
         """
-        Load configuration from JSON file.
+        Load configuration from YAML file.
 
         Args:
-            filepath: Path to configuration file
+            filepath: Path to configuration file (e.g., 'configs/my_config.yaml')
 
         Returns:
             StrategyConfig instance or None if loading fails
         """
+        if not os.path.exists(filepath):
+            logger.error(f"Configuration file not found: {filepath}")
+            return None
         try:
             with open(filepath, "r") as f:
-                config_dict = json.load(f)
+                config_dict = yaml.safe_load(f)  # Use safe_load for YAML
+            if not config_dict:
+                logger.error(f"Configuration file is empty or invalid: {filepath}")
+                return None
             logger.info(f"Loaded strategy configuration from {filepath}")
-            # Recreate config, which also recreates the unique run ID and output dir path
-            # Note: This means loading a config won't resume the *exact* same run ID/dir
+            # Recreate config using from_dict, which handles nested structures
+            return cls.from_dict(config_dict)
+        except yaml.YAMLError as e:
+            logger.exception(f"Error parsing YAML configuration file {filepath}: {e}")
+            return None
+        except Exception as e:
+            logger.exception(f"Failed to load configuration from {filepath}: {e}")
+            return None
             # unless the loaded config_dict['output_dir'] is handled specially.
             # For simplicity, we assume loading creates a new run based on the loaded settings.
             return cls.from_dict(config_dict)
@@ -2173,7 +2186,7 @@ def run_trading_strategy(config_file: Optional[str] = None) -> Dict:
     Run the trading strategy, loading config from file if provided.
 
     Args:
-        config_file: Path to strategy configuration JSON file.
+        config_file: Path to strategy configuration YAML file.
 
     Returns:
         Dictionary with strategy summary results.

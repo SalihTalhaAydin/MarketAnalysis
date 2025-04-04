@@ -80,6 +80,8 @@ pytz==2025.2
     # via
     #   pandas
     #   yfinance
+pyyaml==6.0.2
+    # via market_ml_model (setup.py)
 requests==2.32.3
     # via
     #   pandas-datareader
