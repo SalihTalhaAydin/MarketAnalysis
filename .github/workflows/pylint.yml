@@ -46,6 +46,7 @@ jobs:
         git commit -am "Automated code formatting"
         git push
 
+
     - name: Analyse the code with pylint
       run: |
         pylint $(git ls-files '*.py')
