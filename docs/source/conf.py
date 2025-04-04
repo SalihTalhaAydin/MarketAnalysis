@@ -24,15 +24,14 @@ extensions = [
     "sphinx.ext.napoleon",  # Support for Google and NumPy style docstrings
     "sphinx.ext.viewcode",  # Add links to source code
     "sphinx.ext.githubpages",  # Helps with GitHub Pages deployment
-    "myst_parser",  # Enable Markdown parsing
+    # "myst_parser", # Removed as all files are .rst now
 ]
 
 templates_path = ["_templates"]
 exclude_patterns = []
 
-# The suffix(es) of source filenames.
-# You can specify multiple suffix as a list of string:
-source_suffix = [".rst", ".md"]  # Explicitly list suffixes
+# The suffix(es) of source filenames. Default is .rst
+# source_suffix = ['.rst'] # Removed explicit setting
 
 # The master toctree document.
 master_doc = "index"
@@ -49,20 +48,9 @@ html_static_path = ["_static"]
 # html_static_path = ['_static']
 
 # -- Options for MyST Parser -------------------------------------------------
-myst_enable_extensions = [
-    "amsmath",
-    "colon_fence",
-    "deflist",
-    "dollarmath",
-    "html_admonition",
-    "html_image",
-    "linkify",
-    "replacements",
-    "smartquotes",
-    "substitution",
-    "tasklist",
-]
-myst_heading_anchors = 3  # Auto-generate heading anchors up to level 3
+# (Removed as myst_parser extension is removed)
+# myst_enable_extensions = [...]
+# myst_heading_anchors = 3
 
 # -- Options for autodoc ----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html#configuration
