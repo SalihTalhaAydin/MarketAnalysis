@@ -2,17 +2,19 @@
 Main backtesting functionality for trading strategies.
 """
 
-import pandas as pd
-import numpy as np
-import os
 import logging
-from typing import Dict, List, Optional, Tuple, Union, Any
+import os
 from datetime import datetime
+from typing import Any, Dict, List, Optional, Tuple, Union
+
+import numpy as np
+import pandas as pd
+
+from ..utils.metrics import calculate_returns_metrics
+from .position.position_sizing import calculate_position_size
 
 # Import trade management
 from .simulation import TradeManager
-from .position.position_sizing import calculate_position_size
-from ..utils.metrics import calculate_returns_metrics
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -27,7 +29,7 @@ def backtest_strategy(
     use_kelly_sizing: bool = True,
     atr_multiplier_sl: Optional[float] = 1.0,
     atr_multiplier_tp: Optional[float] = 2.0,
-    atr_col: str = 'ATRr_10',
+    atr_col: str = "ATRr_10",
     trailing_stop_pct: Optional[float] = 0.01,
     trailing_stop_activation_pct: float = 0.01,
     max_open_trades: int = 5,
@@ -74,10 +76,12 @@ def backtest_strategy(
     logger.info("--- Starting Advanced Vectorized Backtest ---")
 
     # Validate inputs
-    required_cols = ['high', 'low', 'close', 'prediction']
+    required_cols = ["high", "low", "close", "prediction"]
 
     # Add ATR column to required if dynamic stops are used
-    if use_dynamic_stops and (atr_multiplier_sl is not None or atr_multiplier_tp is not None):
+    if use_dynamic_stops and (
+        atr_multiplier_sl is not None or atr_multiplier_tp is not None
+    ):
         required_cols.append(atr_col)
 
     missing = [c for c in required_cols if c not in data_with_predictions.columns]
@@ -93,12 +97,12 @@ def backtest_strategy(
     if not isinstance(data_with_predictions.index, pd.DatetimeIndex):
         logger.warning("Index is not DatetimeIndex. Attempting conversion...")
         try:
-            data_with_predictions.index = pd.to_datetime(
-                data_with_predictions.index)
+            data_with_predictions.index = pd.to_datetime(data_with_predictions.index)
         except Exception as e:
             logger.error(f"Failed to convert index to DatetimeIndex: {e}")
             logger.warning(
-                "Continuing with original index, but timestamp functionality may be limited.")
+                "Continuing with original index, but timestamp functionality may be limited."
+            )
 
     # Initialize trade manager
     trade_manager = TradeManager(
@@ -111,8 +115,10 @@ def backtest_strategy(
         max_drawdown_pct=max_drawdown_pct,
         trailing_stop_enabled=trailing_stop_pct is not None,
         trailing_stop_activation=trailing_stop_activation_pct,
-        trailing_stop_distance=trailing_stop_pct if trailing_stop_pct is not None else 0.01,
-        pyramiding_allowed=allow_pyramiding
+        trailing_stop_distance=(
+            trailing_stop_pct if trailing_stop_pct is not None else 0.01
+        ),
+        pyramiding_allowed=allow_pyramiding,
     )
 
     # Create working copy of data
@@ -131,23 +137,23 @@ def backtest_strategy(
 
     # Get default volatility estimate from ATR if available
     if atr_col in df.columns:
-        default_volatility = df[atr_col].mean() / df['close'].mean()
+        default_volatility = df[atr_col].mean() / df["close"].mean()
     else:
-        default_volatility = df['close'].pct_change().std()
+        default_volatility = df["close"].pct_change().std()
 
     # Iterate through each bar
     for i in range(1, len(df)):
         current_idx = df.index[i]
-        prev_idx = df.index[i-1]
+        prev_idx = df.index[i - 1]
 
         # Current market data
-        current_close = df.iloc[i]['close']
-        current_high = df.iloc[i]['high']
-        current_low = df.iloc[i]['low']
+        current_close = df.iloc[i]["close"]
+        current_high = df.iloc[i]["high"]
+        current_low = df.iloc[i]["low"]
 
         # Previous data for decisions
-        prev_signal = df.iloc[i-1]['prediction']
-        prev_close = df.iloc[i-1]['close']
+        prev_signal = df.iloc[i - 1]["prediction"]
+        prev_close = df.iloc[i - 1]["close"]
 
         # Current volatility
         if atr_col in df.columns:
@@ -162,22 +168,30 @@ def backtest_strategy(
         if prev_signal != 0:  # Non-zero signal
             # Calculate stop loss and take profit prices
             if use_dynamic_stops and atr_col in df.columns:
-                atr_value = df.iloc[i-1][atr_col]
+                atr_value = df.iloc[i - 1][atr_col]
 
                 if prev_signal == 1:  # Long signal
-                    stop_loss = prev_close - \
-                        (atr_multiplier_sl *
-                         atr_value) if atr_multiplier_sl is not None else None
-                    take_profit = prev_close + \
-                        (atr_multiplier_tp *
-                         atr_value) if atr_multiplier_tp is not None else None
+                    stop_loss = (
+                        prev_close - (atr_multiplier_sl * atr_value)
+                        if atr_multiplier_sl is not None
+                        else None
+                    )
+                    take_profit = (
+                        prev_close + (atr_multiplier_tp * atr_value)
+                        if atr_multiplier_tp is not None
+                        else None
+                    )
                 else:  # Short signal
-                    stop_loss = prev_close + \
-                        (atr_multiplier_sl *
-                         atr_value) if atr_multiplier_sl is not None else None
-                    take_profit = prev_close - \
-                        (atr_multiplier_tp *
-                         atr_value) if atr_multiplier_tp is not None else None
+                    stop_loss = (
+                        prev_close + (atr_multiplier_sl * atr_value)
+                        if atr_multiplier_sl is not None
+                        else None
+                    )
+                    take_profit = (
+                        prev_close - (atr_multiplier_tp * atr_value)
+                        if atr_multiplier_tp is not None
+                        else None
+                    )
             else:
                 # Default fixed percentage stops (1% SL, 2% TP)
                 # Calculate these regardless of atr_multiplier values when use_dynamic_stops is False
@@ -191,17 +205,16 @@ def backtest_strategy(
                 # by a different mechanism (not currently implemented based on atr_multiplier being None)
 
             # Calculate entry price with slippage
-            entry_price = prev_close * \
-                (1 + slippage_pct_per_trade * prev_signal)
+            entry_price = prev_close * (1 + slippage_pct_per_trade * prev_signal)
 
             # Convert signal to signal strength (simplistic approach)
-            signal_strength = max(
-                0.5, min(1.0, abs(prev_signal) * signal_threshold))
+            signal_strength = max(0.5, min(1.0, abs(prev_signal) * signal_threshold))
 
             # Only enter if symbol not in positions or pyramiding allowed
-            can_enter = (symbol not in trade_manager.positions or
-                         (allow_pyramiding and
-                          (trade_manager.positions[symbol] > 0) == (prev_signal > 0)))
+            can_enter = symbol not in trade_manager.positions or (
+                allow_pyramiding
+                and (trade_manager.positions[symbol] > 0) == (prev_signal > 0)
+            )
 
             if can_enter:
                 # Apply transaction cost to entry
@@ -217,19 +230,19 @@ def backtest_strategy(
                     take_profit=take_profit,
                     signal_strength=signal_strength,
                     volatility=current_volatility,
-                    tags=['backtest']
+                    tags=["backtest"],
                 )
 
         # Update benchmark if tracking
         if benchmark_values is not None:
             benchmark_values.append(
-                benchmark_values[-1] * (1 + benchmark_returns.iloc[i]))
+                benchmark_values[-1] * (1 + benchmark_returns.iloc[i])
+            )
 
     # Close any remaining positions at the end
     if trade_manager.active_trades:
-        final_prices = {symbol: df.iloc[-1]['close']}
-        trade_manager.close_all_positions(
-            df.index[-1], final_prices, "End of Backtest")
+        final_prices = {symbol: df.iloc[-1]["close"]}
+        trade_manager.close_all_positions(df.index[-1], final_prices, "End of Backtest")
 
     # Calculate final metrics
     metrics = trade_manager.get_performance_metrics()
@@ -237,7 +250,8 @@ def backtest_strategy(
     # Create benchmark equity curve if available
     if benchmark_values is not None:
         benchmark_equity = pd.Series(
-            benchmark_values, index=df.index[:len(benchmark_values)])
+            benchmark_values, index=df.index[: len(benchmark_values)]
+        )
     else:
         benchmark_equity = None
 
@@ -248,8 +262,7 @@ def backtest_strategy(
             os.makedirs(output_path)
 
         trade_manager.generate_report(
-            output_dir=output_path,
-            benchmark_equity=benchmark_equity
+            output_dir=output_path, benchmark_equity=benchmark_equity
         )
 
     # Export trades if requested
@@ -287,13 +300,21 @@ def backtest_strategy(
         "transaction_costs_pct": transaction_cost_pct * 100,
         "slippage_pct": slippage_pct_per_trade * 100,
         "final_capital": trade_manager.capital,
-        "stop_loss_setting": f"{atr_multiplier_sl}*ATR" if atr_multiplier_sl is not None else "None",
-        "take_profit_setting": f"{atr_multiplier_tp}*ATR" if atr_multiplier_tp is not None else "None",
-        "trailing_stop_setting": f"{trailing_stop_pct:.2%}" if trailing_stop_pct is not None else "None",
+        "stop_loss_setting": (
+            f"{atr_multiplier_sl}*ATR" if atr_multiplier_sl is not None else "None"
+        ),
+        "take_profit_setting": (
+            f"{atr_multiplier_tp}*ATR" if atr_multiplier_tp is not None else "None"
+        ),
+        "trailing_stop_setting": (
+            f"{trailing_stop_pct:.2%}" if trailing_stop_pct is not None else "None"
+        ),
     }
 
-    logger.info(f"Backtest completed: Return {performance_summary['total_return_pct']:.2f}%, "
-                f"Win Rate {performance_summary['win_rate_pct']:.2f}%, "
-                f"Trades {performance_summary['num_trades']}")
+    logger.info(
+        f"Backtest completed: Return {performance_summary['total_return_pct']:.2f}%, "
+        f"Win Rate {performance_summary['win_rate_pct']:.2f}%, "
+        f"Trades {performance_summary['num_trades']}"
+    )
 
     return performance_summary
