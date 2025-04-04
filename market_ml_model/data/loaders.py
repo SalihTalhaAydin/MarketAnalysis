@@ -2,28 +2,31 @@
 Core data loading functionality.
 """
 
-import pandas as pd
-import numpy as np
-import logging
-import time
-import os
-from typing import Dict, List, Optional, Tuple, Union, Any
-from datetime import datetime, timedelta
 import json
+import logging
+import os
+import time
+from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional, Tuple, Union
+
+import numpy as np
+import pandas as pd
+
+from .sources.alpha_vantage import load_from_alpha_vantage
+from .sources.crypto import load_from_crypto
+from .sources.csv_loader import load_from_csv
+from .sources.data_source import DataSource
+from .sources.datareader import load_from_datareader
 
 # Import data source modules
 from .sources.yahoo import load_from_yahoo
-from .sources.alpha_vantage import load_from_alpha_vantage
-from .sources.csv_loader import load_from_csv
-from .sources.crypto import load_from_crypto
-from .sources.datareader import load_from_datareader
-from .sources.data_source import DataSource
+
+# Import transformations
+from .transformations import align_data, detect_outliers, handle_outliers, resample_data
 
 # Import cache module
 # from .cache.cache import DataCache # Commented out due to missing module/file
 
-# Import transformations
-from .transformations import resample_data, align_data, detect_outliers, handle_outliers
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -31,7 +34,7 @@ logger = logging.getLogger(__name__)
 
 class DataLoaderConfig:
     """Configuration for data loader."""
-    
+
     def __init__(
         self,
         data_source: str = DataSource.YAHOO,
@@ -84,37 +87,37 @@ class DataLoaderConfig:
             self.cache_dir = None
 
     @classmethod
-    def from_dict(cls, config_dict: Dict[str, Any]) -> 'DataLoaderConfig':
+    def from_dict(cls, config_dict: Dict[str, Any]) -> "DataLoaderConfig":
         """Create configuration from dictionary."""
         return cls(**config_dict)
 
     @classmethod
-    def from_json(cls, json_path: str) -> 'DataLoaderConfig':
+    def from_json(cls, json_path: str) -> "DataLoaderConfig":
         """Load configuration from JSON file."""
-        with open(json_path, 'r') as f:
+        with open(json_path, "r") as f:
             config_dict = json.load(f)
         return cls.from_dict(config_dict)
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert configuration to dictionary."""
         return {
-            'data_source': self.data_source,
-            'api_key': self.api_key,
-            'rate_limit_pause': self.rate_limit_pause,
-            'cache_dir': self.cache_dir,
-            'retry_count': self.retry_count,
-            'use_cache': self.use_cache,
-            'cache_expiry_days': self.cache_expiry_days,
-            'default_start_date': self.default_start_date,
-            'default_end_date': self.default_end_date,
-            'default_interval': self.default_interval,
-            'crypto_exchange': self.crypto_exchange,
-            'adjust_prices': self.adjust_prices,
+            "data_source": self.data_source,
+            "api_key": self.api_key,
+            "rate_limit_pause": self.rate_limit_pause,
+            "cache_dir": self.cache_dir,
+            "retry_count": self.retry_count,
+            "use_cache": self.use_cache,
+            "cache_expiry_days": self.cache_expiry_days,
+            "default_start_date": self.default_start_date,
+            "default_end_date": self.default_end_date,
+            "default_interval": self.default_interval,
+            "crypto_exchange": self.crypto_exchange,
+            "adjust_prices": self.adjust_prices,
         }
 
     def to_json(self, json_path: str) -> None:
         """Save configuration to JSON file."""
-        with open(json_path, 'w') as f:
+        with open(json_path, "w") as f:
             json.dump(self.to_dict(), f, indent=4)
 
 
@@ -134,7 +137,7 @@ class DataLoader:
         if self.config.use_cache and self.config.cache_dir:
             self.cache = DataCache(
                 cache_dir=self.config.cache_dir,
-                expiry_days=self.config.cache_expiry_days
+                expiry_days=self.config.cache_expiry_days,
             )
         else:
             self.cache = None
@@ -149,7 +152,7 @@ class DataLoader:
         end_date: Optional[str] = None,
         interval: Optional[str] = None,
         data_source: Optional[str] = None,
-        force_reload: bool = False
+        force_reload: bool = False,
     ) -> Optional[pd.DataFrame]:
         """
         Load market data based on configuration.
@@ -172,12 +175,14 @@ class DataLoader:
         data_source = data_source or self.config.data_source
 
         logger.info(
-            f"Loading {ticker} data from {start_date} to {end_date} (interval: {interval})")
+            f"Loading {ticker} data from {start_date} to {end_date} (interval: {interval})"
+        )
 
         # Check cache first if enabled
         if self.cache and not force_reload:
             cache_path = self.cache.get_cache_path(
-                ticker, start_date, end_date, interval)
+                ticker, start_date, end_date, interval
+            )
             cached_data = self.cache.get_cached_data(cache_path)
 
             if cached_data is not None:
@@ -197,7 +202,7 @@ class DataLoader:
                 end_date=end_date,
                 interval=interval,
                 adjust_prices=self.config.adjust_prices,
-                retry_count=self.config.retry_count
+                retry_count=self.config.retry_count,
             )
 
         elif data_source == DataSource.ALPHA_VANTAGE:
@@ -207,15 +212,13 @@ class DataLoader:
                 start_date=start_date,
                 end_date=end_date,
                 interval=interval,
-                retry_count=self.config.retry_count
+                retry_count=self.config.retry_count,
             )
 
         elif data_source == DataSource.CSV:
             # Treat ticker as file path for CSV
             data = load_from_csv(
-                file_path=ticker,
-                start_date=start_date,
-                end_date=end_date
+                file_path=ticker, start_date=start_date, end_date=end_date
             )
 
         elif data_source == DataSource.CRYPTO:
@@ -225,7 +228,7 @@ class DataLoader:
                 start_date=start_date,
                 end_date=end_date,
                 interval=interval,
-                retry_count=self.config.retry_count
+                retry_count=self.config.retry_count,
             )
 
         elif data_source == DataSource.DATAREADER:
@@ -236,7 +239,7 @@ class DataLoader:
                 start_date=start_date,
                 end_date=end_date,
                 api_key=self.config.api_key,
-                retry_count=self.config.retry_count
+                retry_count=self.config.retry_count,
             )
 
         else:
@@ -246,7 +249,8 @@ class DataLoader:
         # Save to cache if successful
         if data is not None and self.cache:
             cache_path = self.cache.get_cache_path(
-                ticker, start_date, end_date, interval)
+                ticker, start_date, end_date, interval
+            )
             self.cache.save_to_cache(data, cache_path)
 
         return data
@@ -258,8 +262,8 @@ class DataLoader:
         end_date: Optional[str] = None,
         interval: Optional[str] = None,
         data_source: Optional[str] = None,
-        column_name: str = 'close',
-        force_reload: bool = False
+        column_name: str = "close",
+        force_reload: bool = False,
     ) -> Optional[pd.DataFrame]:
         """
         Load data for multiple tickers and combine into a single DataFrame.
@@ -286,7 +290,7 @@ class DataLoader:
                 end_date=end_date,
                 interval=interval,
                 data_source=data_source,
-                force_reload=force_reload
+                force_reload=force_reload,
             )
 
             if data is None:
@@ -297,8 +301,7 @@ class DataLoader:
             if column_name in data.columns:
                 result[ticker] = data[column_name]
             else:
-                logger.warning(
-                    f"Column '{column_name}' not found in data for {ticker}")
+                logger.warning(f"Column '{column_name}' not found in data for {ticker}")
 
         if not result:
             logger.error("Failed to load data for any ticker")
@@ -332,7 +335,7 @@ def load_data(
     use_cache: bool = True,
     handle_missing: bool = True,
     detect_outliers_method: Optional[str] = None,
-    verbose: bool = True
+    verbose: bool = True,
 ) -> Optional[pd.DataFrame]:
     """
     Main function to load market data.
@@ -369,7 +372,7 @@ def load_data(
         default_start_date=start_date,
         default_end_date=end_date,
         default_interval=interval,
-        adjust_prices=adjust_prices
+        adjust_prices=adjust_prices,
     )
 
     # Create data loader
@@ -398,14 +401,10 @@ def load_data(
 
     # Detect and handle outliers if requested
     if detect_outliers_method and data is not None:
-        logger.info(
-            f"Detecting outliers using {detect_outliers_method} method")
+        logger.info(f"Detecting outliers using {detect_outliers_method} method")
 
         # Detect outliers
-        outliers = detect_outliers(
-            data=data,
-            method=detect_outliers_method
-        )
+        outliers = detect_outliers(data=data, method=detect_outliers_method)
 
         # Check if any outliers found
         if outliers.any().any():
@@ -413,10 +412,7 @@ def load_data(
 
             # Handle outliers
             data = handle_outliers(
-                data=data,
-                outliers=outliers,
-                method='fillna',
-                fill_method='interpolate'
+                data=data, outliers=outliers, method="fillna", fill_method="interpolate"
             )
 
     return data

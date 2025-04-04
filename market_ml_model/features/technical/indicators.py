@@ -2,10 +2,11 @@
 Technical indicators for market data analysis.
 """
 
-import pandas as pd
-import numpy as np
 import logging
 from typing import Dict, List, Optional, Tuple
+
+import numpy as np
+import pandas as pd
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -13,15 +14,17 @@ logger = logging.getLogger(__name__)
 # Try importing technical analysis libraries with fallbacks
 try:
     import pandas_ta as ta
+
     PANDAS_TA_AVAILABLE = True
 except ImportError:
     logger.warning("pandas-ta not installed. Installing required package...")
     import subprocess
     import sys
+
     try:
-        subprocess.check_call(
-            [sys.executable, "-m", "pip", "install", "pandas-ta"])
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "pandas-ta"])
         import pandas_ta as ta
+
         PANDAS_TA_AVAILABLE = True
     except Exception as e:
         logger.error(f"Failed to install pandas-ta: {e}")
@@ -29,19 +32,20 @@ except ImportError:
 
 # Try importing advanced stats libraries
 try:
-    from statsmodels.tsa.stattools import adfuller
-    from hurst import compute_Hc
     from arch import arch_model
+    from hurst import compute_Hc
+    from statsmodels.tsa.stattools import adfuller
+
     ADVANCED_STATS = True
 except ImportError:
     logger.warning(
-        "Advanced statistical packages not installed. Some features will be disabled.")
+        "Advanced statistical packages not installed. Some features will be disabled."
+    )
     ADVANCED_STATS = False
 
 
 def calculate_technical_indicators(
-    df: pd.DataFrame,
-    indicators: Optional[List[str]] = None
+    df: pd.DataFrame, indicators: Optional[List[str]] = None
 ) -> pd.DataFrame:
     """
     Calculate technical indicators for the given dataframe using pandas-ta.
@@ -60,14 +64,22 @@ def calculate_technical_indicators(
     # Default indicators if none specified
     if indicators is None:
         indicators = [
-            'sma', 'ema', 'rsi', 'macd', 'bbands', 'atr', 'adx', 'stoch', 'volume_indicators'
+            "sma",
+            "ema",
+            "rsi",
+            "macd",
+            "bbands",
+            "atr",
+            "adx",
+            "stoch",
+            "volume_indicators",
         ]
 
     # Make a copy of the dataframe
     result_df = df.copy()
 
     # Check for required columns
-    required_cols = ['open', 'high', 'low', 'close']
+    required_cols = ["open", "high", "low", "close"]
     missing_cols = [col for col in required_cols if col not in result_df.columns]
 
     if missing_cols:
@@ -78,96 +90,123 @@ def calculate_technical_indicators(
     try:
         # Calculate indicators
         for indicator in indicators:
-            try: # Add inner try-except for individual indicators
-                if indicator == 'sma':
+            try:  # Add inner try-except for individual indicators
+                if indicator == "sma":
                     # Simple Moving Averages
                     for period in [20, 50, 200]:
-                        result_df[f'sma_{period}'] = ta.sma(result_df['close'], length=period)
+                        result_df[f"sma_{period}"] = ta.sma(
+                            result_df["close"], length=period
+                        )
 
-                elif indicator == 'ema':
+                elif indicator == "ema":
                     # Exponential Moving Averages
                     for period in [9, 20, 50]:
-                        result_df[f'ema_{period}'] = ta.ema(result_df['close'], length=period)
+                        result_df[f"ema_{period}"] = ta.ema(
+                            result_df["close"], length=period
+                        )
 
-                elif indicator == 'rsi':
+                elif indicator == "rsi":
                     # Relative Strength Index
-                    result_df['rsi_14'] = ta.rsi(result_df['close'], length=14)
+                    result_df["rsi_14"] = ta.rsi(result_df["close"], length=14)
 
-                elif indicator == 'macd':
+                elif indicator == "macd":
                     # MACD
-                    macd = ta.macd(result_df['close'])
+                    macd = ta.macd(result_df["close"])
                     if isinstance(macd, pd.DataFrame) and len(macd.columns) >= 3:
-                        result_df['macd'] = macd.iloc[:, 0]
-                        result_df['macd_signal'] = macd.iloc[:, 1]
-                        result_df['macd_hist'] = macd.iloc[:, 2]
+                        result_df["macd"] = macd.iloc[:, 0]
+                        result_df["macd_signal"] = macd.iloc[:, 1]
+                        result_df["macd_hist"] = macd.iloc[:, 2]
 
-                elif indicator == 'bbands':
+                elif indicator == "bbands":
                     # Bollinger Bands
-                    bbands = ta.bbands(result_df['close'], length=20)
+                    bbands = ta.bbands(result_df["close"], length=20)
                     if isinstance(bbands, pd.DataFrame) and len(bbands.columns) >= 3:
-                        result_df['bb_upper'] = bbands.iloc[:, 0]
-                        result_df['bb_middle'] = bbands.iloc[:, 1]
-                        result_df['bb_lower'] = bbands.iloc[:, 2]
-                        result_df['bb_width'] = ((bbands.iloc[:, 0] - bbands.iloc[:, 2]) /
-                                                bbands.iloc[:, 1])
+                        result_df["bb_upper"] = bbands.iloc[:, 0]
+                        result_df["bb_middle"] = bbands.iloc[:, 1]
+                        result_df["bb_lower"] = bbands.iloc[:, 2]
+                        result_df["bb_width"] = (
+                            bbands.iloc[:, 0] - bbands.iloc[:, 2]
+                        ) / bbands.iloc[:, 1]
 
-                elif indicator == 'atr':
+                elif indicator == "atr":
                     # Average True Range
-                    if all(c in result_df.columns for c in ['high', 'low', 'close']):
-                        result_df['atr_14'] = ta.atr(
-                            result_df['high'], result_df['low'], result_df['close'], length=14
+                    if all(c in result_df.columns for c in ["high", "low", "close"]):
+                        result_df["atr_14"] = ta.atr(
+                            result_df["high"],
+                            result_df["low"],
+                            result_df["close"],
+                            length=14,
                         )
                         # ATR as a percentage of price (ATRr)
-                        result_df['ATRr_10'] = ta.atr(
-                            result_df['high'], result_df['low'], result_df['close'], length=10
-                        ) / result_df['close']
+                        result_df["ATRr_10"] = (
+                            ta.atr(
+                                result_df["high"],
+                                result_df["low"],
+                                result_df["close"],
+                                length=10,
+                            )
+                            / result_df["close"]
+                        )
                     else:
                         logger.warning("Missing HLC for ATR calculation.")
 
-
-                elif indicator == 'adx':
+                elif indicator == "adx":
                     # Average Directional Index
-                    if all(c in result_df.columns for c in ['high', 'low', 'close']):
-                        adx = ta.adx(result_df['high'], result_df['low'], result_df['close'])
+                    if all(c in result_df.columns for c in ["high", "low", "close"]):
+                        adx = ta.adx(
+                            result_df["high"], result_df["low"], result_df["close"]
+                        )
                         if isinstance(adx, pd.DataFrame) and len(adx.columns) >= 3:
-                            result_df['adx'] = adx.iloc[:, 0]
-                            result_df['dmp'] = adx.iloc[:, 1]  # Plus Directional Movement
-                            result_df['dmn'] = adx.iloc[:, 2]  # Minus Directional Movement
+                            result_df["adx"] = adx.iloc[:, 0]
+                            result_df["dmp"] = adx.iloc[
+                                :, 1
+                            ]  # Plus Directional Movement
+                            result_df["dmn"] = adx.iloc[
+                                :, 2
+                            ]  # Minus Directional Movement
                     else:
                         logger.warning("Missing HLC for ADX calculation.")
 
-                elif indicator == 'stoch':
+                elif indicator == "stoch":
                     # Stochastic Oscillator
-                    if all(c in result_df.columns for c in ['high', 'low', 'close']):
-                        stoch = ta.stoch(result_df['high'], result_df['low'], result_df['close'])
+                    if all(c in result_df.columns for c in ["high", "low", "close"]):
+                        stoch = ta.stoch(
+                            result_df["high"], result_df["low"], result_df["close"]
+                        )
                         if isinstance(stoch, pd.DataFrame) and len(stoch.columns) >= 2:
-                            result_df['stoch_k'] = stoch.iloc[:, 0]
-                            result_df['stoch_d'] = stoch.iloc[:, 1]
+                            result_df["stoch_k"] = stoch.iloc[:, 0]
+                            result_df["stoch_d"] = stoch.iloc[:, 1]
                     else:
                         logger.warning("Missing HLC for Stochastic calculation.")
 
-                elif indicator == 'volume_indicators' and 'volume' in result_df.columns:
+                elif indicator == "volume_indicators" and "volume" in result_df.columns:
                     # Volume-based indicators
-                    result_df['volume_sma20'] = ta.sma(result_df['volume'], length=20)
-                    result_df['volume_ratio'] = result_df['volume'] / result_df['volume_sma20']
-                    result_df['obv'] = ta.obv(result_df['close'], result_df['volume'])
+                    result_df["volume_sma20"] = ta.sma(result_df["volume"], length=20)
+                    result_df["volume_ratio"] = (
+                        result_df["volume"] / result_df["volume_sma20"]
+                    )
+                    result_df["obv"] = ta.obv(result_df["close"], result_df["volume"])
 
                     # Money Flow Index
-                    if all(c in result_df.columns for c in ['high', 'low', 'close']):
-                        result_df['mfi_14'] = ta.mfi(
-                            result_df['high'], result_df['low'], result_df['close'],
-                            result_df['volume'], length=14
+                    if all(c in result_df.columns for c in ["high", "low", "close"]):
+                        result_df["mfi_14"] = ta.mfi(
+                            result_df["high"],
+                            result_df["low"],
+                            result_df["close"],
+                            result_df["volume"],
+                            length=14,
                         )
                     else:
                         logger.warning("Missing HLC for MFI calculation.")
 
                 else:
-                    if indicator != 'volume_indicators': # Avoid warning if volume just missing
+                    if (
+                        indicator != "volume_indicators"
+                    ):  # Avoid warning if volume just missing
                         logger.warning(f"Unsupported or skipped indicator: {indicator}")
 
             except Exception as e_ind:
-                 logger.error(f"Error calculating indicator '{indicator}': {e_ind}")
-
+                logger.error(f"Error calculating indicator '{indicator}': {e_ind}")
 
         logger.info(f"Calculated {len(indicators)} indicator groups using pandas-ta")
         return result_df
@@ -179,7 +218,10 @@ def calculate_technical_indicators(
 
 # --- Additional Feature Engineering Functions ---
 
-def calculate_fractals(high: pd.Series, low: pd.Series, window: int = 5) -> Tuple[pd.Series, pd.Series]:
+
+def calculate_fractals(
+    high: pd.Series, low: pd.Series, window: int = 5
+) -> Tuple[pd.Series, pd.Series]:
     """
     Calculate Williams' Fractals for identifying potential support/resistance.
 
@@ -197,14 +239,14 @@ def calculate_fractals(high: pd.Series, low: pd.Series, window: int = 5) -> Tupl
     # Need at least window*2+1 data points - adjust window logic slightly
     half_window = window // 2
     if len(high) < window:
-         logger.warning(f"Not enough data ({len(high)}) for fractal window {window}")
-         return bullish_fractals, bearish_fractals
+        logger.warning(f"Not enough data ({len(high)}) for fractal window {window}")
+        return bullish_fractals, bearish_fractals
 
     # Bullish fractals (low point with higher lows on both sides)
     for i in range(half_window, len(low) - half_window):
         is_bullish = True
         for j in range(1, half_window + 1):
-            if low.iloc[i] >= low.iloc[i-j] or low.iloc[i] >= low.iloc[i+j]:
+            if low.iloc[i] >= low.iloc[i - j] or low.iloc[i] >= low.iloc[i + j]:
                 is_bullish = False
                 break
         if is_bullish:
@@ -214,7 +256,7 @@ def calculate_fractals(high: pd.Series, low: pd.Series, window: int = 5) -> Tupl
     for i in range(half_window, len(high) - half_window):
         is_bearish = True
         for j in range(1, half_window + 1):
-             if high.iloc[i] <= high.iloc[i-j] or high.iloc[i] <= high.iloc[i+j]:
+            if high.iloc[i] <= high.iloc[i - j] or high.iloc[i] <= high.iloc[i + j]:
                 is_bearish = False
                 break
         if is_bearish:
@@ -243,7 +285,9 @@ def calculate_efficiency_ratio(data: pd.Series, window: int = 10) -> pd.Series:
     return efficiency_ratio
 
 
-def calculate_hurst_exponent(data: pd.Series, min_window: int = 10, max_window: int = 100) -> float:
+def calculate_hurst_exponent(
+    data: pd.Series, min_window: int = 10, max_window: int = 100
+) -> float:
     """
     Calculate Hurst Exponent to identify mean-reversion vs. trend characteristics.
     H > 0.5: trending, H < 0.5: mean-reverting, H ≈ 0.5: random walk
@@ -261,11 +305,13 @@ def calculate_hurst_exponent(data: pd.Series, min_window: int = 10, max_window: 
 
     try:
         # Convert to numpy array for hurst calculation
-        prices_array = data.dropna().values # Drop NaNs before calculation
-        if len(prices_array) < min_window: # Check length after dropping NaNs
-             logger.warning(f"Not enough data ({len(prices_array)}) for Hurst Exponent calculation (min_window={min_window})")
-             return 0.5
-        H, _, _ = compute_Hc(prices_array, kind='price', simplified=True)
+        prices_array = data.dropna().values  # Drop NaNs before calculation
+        if len(prices_array) < min_window:  # Check length after dropping NaNs
+            logger.warning(
+                f"Not enough data ({len(prices_array)}) for Hurst Exponent calculation (min_window={min_window})"
+            )
+            return 0.5
+        H, _, _ = compute_Hc(prices_array, kind="price", simplified=True)
         return H
     except Exception as e:
         logger.warning(f"Error calculating Hurst exponent: {e}")
@@ -283,49 +329,53 @@ def calculate_volatility_features(df: pd.DataFrame) -> Dict[str, pd.Series]:
         Dictionary of volatility features
     """
     features = {}
-    if 'close' not in df.columns:
+    if "close" not in df.columns:
         logger.warning("Missing 'close' column for volatility features.")
         return features
 
-    returns = df['close'].pct_change() # Calculate returns here
+    returns = df["close"].pct_change()  # Calculate returns here
 
     # Standard rolling volatilities
     for window in [5, 10, 20, 50]:
-        features[f'volatility_{window}'] = returns.rolling(window).std()
+        features[f"volatility_{window}"] = returns.rolling(window).std()
 
     # Normalized volatility (current vs historical)
     vol_20 = returns.rolling(20).std()
     vol_50 = returns.rolling(50).std()
-    features['volatility_ratio_20_50'] = (vol_20 / vol_50).replace([np.inf, -np.inf], np.nan)
-
+    features["volatility_ratio_20_50"] = (vol_20 / vol_50).replace(
+        [np.inf, -np.inf], np.nan
+    )
 
     # Volatility of volatility (meta-volatility)
-    if f'volatility_20' in features:
-        features['vol_of_vol_20'] = features['volatility_20'].rolling(20).std()
+    if f"volatility_20" in features:
+        features["vol_of_vol_20"] = features["volatility_20"].rolling(20).std()
 
     # Realized volatility calculation using Parkinson's formula (high-low range based)
-    if 'high' in df.columns and 'low' in df.columns:
-        high = df['high']
-        low = df['low']
+    if "high" in df.columns and "low" in df.columns:
+        high = df["high"]
+        low = df["low"]
         log_hl_sq = (np.log(high / low) ** 2).replace([np.inf, -np.inf], np.nan)
-        parkinson_vol = np.sqrt( (1.0 / (4.0 * np.log(2.0))) * log_hl_sq.rolling(20).mean() )
+        parkinson_vol = np.sqrt(
+            (1.0 / (4.0 * np.log(2.0))) * log_hl_sq.rolling(20).mean()
+        )
         # Annualize (optional, depends on use case)
         # features['parkinson_vol_20'] = parkinson_vol * np.sqrt(252)
-        features['parkinson_vol_20'] = parkinson_vol
+        features["parkinson_vol_20"] = parkinson_vol
     else:
         logger.warning("Missing 'high' or 'low' for Parkinson volatility.")
-
 
     # GARCH volatility forecast if advanced stats available
     valid_returns = returns.dropna()
     if ADVANCED_STATS and len(valid_returns) > 100:
         try:
             # Fit a GARCH(1,1) model
-            model = arch_model(valid_returns * 100, vol='Garch', p=1, q=1) # Scale returns
-            model_fit = model.fit(disp='off', show_warning=False)
+            model = arch_model(
+                valid_returns * 100, vol="Garch", p=1, q=1
+            )  # Scale returns
+            model_fit = model.fit(disp="off", show_warning=False)
             # Get the conditional volatility forecast
-            cond_vol = model_fit.conditional_volatility / 100 # Rescale
-            features['garch_vol'] = pd.Series(cond_vol, index=valid_returns.index)
+            cond_vol = model_fit.conditional_volatility / 100  # Rescale
+            features["garch_vol"] = pd.Series(cond_vol, index=valid_returns.index)
 
         except Exception as e:
             # GARCH often fails, log as info unless debugging
@@ -334,9 +384,7 @@ def calculate_volatility_features(df: pd.DataFrame) -> Dict[str, pd.Series]:
     return features
 
 
-def calculate_market_regime_features(
-    df: pd.DataFrame
-) -> Dict[str, pd.Series]:
+def calculate_market_regime_features(df: pd.DataFrame) -> Dict[str, pd.Series]:
     """
     Calculate features that help identify market regimes. Requires 'close', optionally 'volume'.
 
@@ -347,67 +395,72 @@ def calculate_market_regime_features(
         Dictionary of regime indicator features
     """
     features = {}
-    if 'close' not in df.columns:
+    if "close" not in df.columns:
         logger.warning("Missing 'close' column for market regime features.")
         return features
 
-    prices = df['close']
+    prices = df["close"]
     returns = prices.pct_change()
-    volumes = df.get('volume')
+    volumes = df.get("volume")
 
     # Check for trend vs range using efficiency ratio
-    features['efficiency_ratio_10'] = calculate_efficiency_ratio(prices, 10)
-    features['efficiency_ratio_20'] = calculate_efficiency_ratio(prices, 20)
+    features["efficiency_ratio_10"] = calculate_efficiency_ratio(prices, 10)
+    features["efficiency_ratio_20"] = calculate_efficiency_ratio(prices, 20)
 
     # ADX for trend strength if pandas_ta available and HLC present
-    if PANDAS_TA_AVAILABLE and all(c in df.columns for c in ['high', 'low', 'close']):
+    if PANDAS_TA_AVAILABLE and all(c in df.columns for c in ["high", "low", "close"]):
         try:
-            adx = ta.adx(df['high'], df['low'], df['close'])
+            adx = ta.adx(df["high"], df["low"], df["close"])
             if isinstance(adx, pd.DataFrame) and len(adx.columns) >= 1:
-                features['adx_14'] = adx.iloc[:, 0]
+                features["adx_14"] = adx.iloc[:, 0]
         except Exception as e:
-             logger.warning(f"Could not calculate ADX: {e}")
+            logger.warning(f"Could not calculate ADX: {e}")
     else:
-        features['adx_14'] = pd.Series(np.nan, index=prices.index)
-
+        features["adx_14"] = pd.Series(np.nan, index=prices.index)
 
     # Simple trend detection (close > moving averages)
     sma50 = prices.rolling(50).mean()
     sma200 = prices.rolling(200).mean()
-    features['close_gt_sma50'] = (prices > sma50).astype(int)
-    features['close_gt_sma200'] = (prices > sma200).astype(int)
+    features["close_gt_sma50"] = (prices > sma50).astype(int)
+    features["close_gt_sma200"] = (prices > sma200).astype(int)
 
     # Simple trend direction (moving averages relative ordering)
     sma20 = prices.rolling(20).mean()
-    features['sma20_gt_sma50'] = (sma20 > sma50).astype(int)
+    features["sma20_gt_sma50"] = (sma20 > sma50).astype(int)
 
     # Volatility regime
     historical_vol = returns.rolling(100).std()
     current_vol = returns.rolling(20).std()
-    features['volatility_regime'] = (current_vol / historical_vol).replace([np.inf, -np.inf], np.nan)
-
+    features["volatility_regime"] = (current_vol / historical_vol).replace(
+        [np.inf, -np.inf], np.nan
+    )
 
     # Volume analysis if volume data provided
     if volumes is not None:
         # Volume moving averages
         vol_sma = volumes.rolling(20).mean()
-        features['volume_ratio'] = (volumes / vol_sma).replace([np.inf, -np.inf], np.nan)
+        features["volume_ratio"] = (volumes / vol_sma).replace(
+            [np.inf, -np.inf], np.nan
+        )
 
         # Price-volume relationship
-        features['price_volume_corr'] = (
-            returns.rolling(20).corr(volumes.pct_change())
-        )
+        features["price_volume_corr"] = returns.rolling(20).corr(volumes.pct_change())
 
     # Stationarity test (ADF test)
     if ADVANCED_STATS:
         try:
             # Setup a rolling ADF test window
             window = 100
-            adf_pvalues = prices.rolling(window).apply(lambda x: adfuller(x.dropna())[1] if len(x.dropna()) >= window else np.nan, raw=True)
+            adf_pvalues = prices.rolling(window).apply(
+                lambda x: (
+                    adfuller(x.dropna())[1] if len(x.dropna()) >= window else np.nan
+                ),
+                raw=True,
+            )
 
-            features['adf_pvalue'] = adf_pvalues
+            features["adf_pvalue"] = adf_pvalues
             # Stationary market (p < 0.05) might be mean-reverting
-            features['is_stationary'] = (features['adf_pvalue'] < 0.05).astype(int)
+            features["is_stationary"] = (features["adf_pvalue"] < 0.05).astype(int)
         except Exception as e:
             logger.warning(f"Error calculating stationarity features: {e}")
 
@@ -415,8 +468,7 @@ def calculate_market_regime_features(
 
 
 def calculate_support_resistance_features(
-    df: pd.DataFrame,
-    window: int = 50
+    df: pd.DataFrame, window: int = 50
 ) -> Dict[str, pd.Series]:
     """
     Calculate features related to support and resistance levels. Requires OHLC.
@@ -431,32 +483,34 @@ def calculate_support_resistance_features(
     features = {}
 
     # Check required columns
-    if not all(col in df.columns for col in ['high', 'low', 'close']):
+    if not all(col in df.columns for col in ["high", "low", "close"]):
         logger.warning(
-            "Cannot calculate support/resistance features: missing OHLC data")
+            "Cannot calculate support/resistance features: missing OHLC data"
+        )
         return features
 
     # Calculate fractal points for potential S/R (using window=5 for standard fractals)
     bullish_fractals, bearish_fractals = calculate_fractals(
-        df['high'], df['low'], window=5) # Standard fractal window
-    features['bullish_fractal'] = bullish_fractals
-    features['bearish_fractal'] = bearish_fractals
+        df["high"], df["low"], window=5
+    )  # Standard fractal window
+    features["bullish_fractal"] = bullish_fractals
+    features["bearish_fractal"] = bearish_fractals
 
     # Identify recent high and low points using the specified window
-    high_roll_max = df['high'].rolling(window).max()
-    low_roll_min = df['low'].rolling(window).min()
+    high_roll_max = df["high"].rolling(window).max()
+    low_roll_min = df["low"].rolling(window).min()
 
     # Calculate distance from recent extremes
-    features['dist_from_recent_high'] = (df['close'] - high_roll_max) / high_roll_max
-    features['dist_from_recent_low'] = (df['close'] - low_roll_min) / low_roll_min
+    features["dist_from_recent_high"] = (df["close"] - high_roll_max) / high_roll_max
+    features["dist_from_recent_low"] = (df["close"] - low_roll_min) / low_roll_min
 
     # Within N% of support/resistance
     threshold = 0.01  # 1% threshold
-    features['near_resistance'] = (
-        features['dist_from_recent_high'].abs() < threshold
+    features["near_resistance"] = (
+        features["dist_from_recent_high"].abs() < threshold
     ).astype(int)
-    features['near_support'] = (
-        features['dist_from_recent_low'].abs() < threshold
+    features["near_support"] = (
+        features["dist_from_recent_low"].abs() < threshold
     ).astype(int)
 
     return features
@@ -475,14 +529,18 @@ def calculate_pattern_features(df: pd.DataFrame) -> Dict[str, pd.Series]:
     features = {}
 
     # Check required columns
-    if not all(col in df.columns for col in ['open', 'high', 'low', 'close']):
+    if not all(col in df.columns for col in ["open", "high", "low", "close"]):
         logger.warning("Cannot calculate pattern features: missing OHLC data")
         return features
 
     # Candlestick properties
-    features['body_size'] = abs(df['close'] - df['open']) / df['open']
-    features['upper_shadow'] = (df['high'] - df[['open', 'close']].max(axis=1)) / df['open']
-    features['lower_shadow'] = (df[['open', 'close']].min(axis=1) - df['low']) / df['open']
+    features["body_size"] = abs(df["close"] - df["open"]) / df["open"]
+    features["upper_shadow"] = (df["high"] - df[["open", "close"]].max(axis=1)) / df[
+        "open"
+    ]
+    features["lower_shadow"] = (df[["open", "close"]].min(axis=1) - df["low"]) / df[
+        "open"
+    ]
 
     # Candlestick patterns using pandas_ta
     if PANDAS_TA_AVAILABLE:
@@ -490,16 +548,19 @@ def calculate_pattern_features(df: pd.DataFrame) -> Dict[str, pd.Series]:
             # Use the ta.cdl_pattern function which aggregates multiple patterns
             # Or calculate specific ones if needed
             # Example: Calculate Doji
-             doji = ta.cdl_doji(df['open'], df['high'], df['low'], df['close'])
-             if doji is not None: features['pattern_doji'] = doji
+            doji = ta.cdl_doji(df["open"], df["high"], df["low"], df["close"])
+            if doji is not None:
+                features["pattern_doji"] = doji
 
-             # Example: Calculate Engulfing
-             engulfing = ta.cdl_engulfing(df['open'], df['high'], df['low'], df['close'])
-             if engulfing is not None: features['pattern_engulfing'] = engulfing
+            # Example: Calculate Engulfing
+            engulfing = ta.cdl_engulfing(df["open"], df["high"], df["low"], df["close"])
+            if engulfing is not None:
+                features["pattern_engulfing"] = engulfing
 
-             # Example: Calculate Hammer
-             hammer = ta.cdl_hammer(df['open'], df['high'], df['low'], df['close'])
-             if hammer is not None: features['pattern_hammer'] = hammer
+            # Example: Calculate Hammer
+            hammer = ta.cdl_hammer(df["open"], df["high"], df["low"], df["close"])
+            if hammer is not None:
+                features["pattern_hammer"] = hammer
 
         except Exception as e:
             logger.warning(f"Error calculating pandas-ta patterns: {e}")
@@ -520,26 +581,26 @@ def calculate_momentum_features(df: pd.DataFrame) -> Dict[str, pd.Series]:
     features = {}
 
     # Check required columns
-    if 'close' not in df.columns:
+    if "close" not in df.columns:
         logger.warning("Missing 'close' column for momentum features.")
         return features
-    price_col = 'close'
+    price_col = "close"
 
     # RSI for different timeframes
     if PANDAS_TA_AVAILABLE:
         for window in [7, 14, 21]:
             try:
-                features[f'rsi_{window}'] = ta.rsi(df[price_col], length=window)
+                features[f"rsi_{window}"] = ta.rsi(df[price_col], length=window)
             except Exception as e:
                 logger.warning(f"Error calculating RSI-{window}: {e}")
 
         # Stochastic oscillator
-        if all(col in df.columns for col in ['high', 'low', price_col]):
+        if all(col in df.columns for col in ["high", "low", price_col]):
             try:
-                stoch = ta.stoch(df['high'], df['low'], df[price_col], k=14, d=3)
+                stoch = ta.stoch(df["high"], df["low"], df[price_col], k=14, d=3)
                 if isinstance(stoch, pd.DataFrame) and len(stoch.columns) >= 2:
-                    features['stoch_k'] = stoch.iloc[:, 0]
-                    features['stoch_d'] = stoch.iloc[:, 1]
+                    features["stoch_k"] = stoch.iloc[:, 0]
+                    features["stoch_d"] = stoch.iloc[:, 1]
             except Exception as e:
                 logger.warning(f"Error calculating Stochastic: {e}")
 
@@ -547,25 +608,26 @@ def calculate_momentum_features(df: pd.DataFrame) -> Dict[str, pd.Series]:
         try:
             macd = ta.macd(df[price_col])
             if isinstance(macd, pd.DataFrame) and len(macd.columns) >= 3:
-                features['macd'] = macd.iloc[:, 0]
-                features['macd_signal'] = macd.iloc[:, 1]
-                features['macd_histogram'] = macd.iloc[:, 2]
+                features["macd"] = macd.iloc[:, 0]
+                features["macd_signal"] = macd.iloc[:, 1]
+                features["macd_histogram"] = macd.iloc[:, 2]
         except Exception as e:
             logger.warning(f"Error calculating MACD: {e}")
 
         # Money Flow Index if volume available
-        if 'volume' in df.columns and all(col in df.columns for col in ['high', 'low', price_col]):
+        if "volume" in df.columns and all(
+            col in df.columns for col in ["high", "low", price_col]
+        ):
             try:
-                features['mfi_14'] = ta.mfi(
-                    df['high'], df['low'], df[price_col], df['volume'], length=14
+                features["mfi_14"] = ta.mfi(
+                    df["high"], df["low"], df[price_col], df["volume"], length=14
                 )
             except Exception as e:
                 logger.warning(f"Error calculating MFI: {e}")
 
     # Rate of Change (doesn't require pandas-ta)
     for window in [5, 10, 20]:
-        features[f'roc_{window}'] = df[price_col].pct_change(window)
-
+        features[f"roc_{window}"] = df[price_col].pct_change(window)
 
     return features
 
@@ -583,34 +645,39 @@ def calculate_vwap_features(df: pd.DataFrame) -> Dict[str, pd.Series]:
     features = {}
 
     # Check required columns
-    if not all(col in df.columns for col in ['high', 'low', 'close', 'volume']):
+    if not all(col in df.columns for col in ["high", "low", "close", "volume"]):
         logger.warning("Cannot calculate VWAP features: missing required data (HLCV)")
         return features
 
     # Calculate typical price
-    typical_price = (df['high'] + df['low'] + df['close']) / 3
+    typical_price = (df["high"] + df["low"] + df["close"]) / 3
 
     # Calculate VWAP using pandas-ta if available (handles daily reset better potentially)
     if PANDAS_TA_AVAILABLE:
-         try:
-             # Assuming daily data, anchor='D' might work. Needs testing.
-             # Or calculate manually if ta.vwap doesn't fit use case.
-             vwap_ta = ta.vwap(df['high'], df['low'], df['close'], df['volume'])
-             if vwap_ta is not None:
-                 features['vwap_ta'] = vwap_ta
-                 features['dist_from_vwap_ta'] = (df['close'] - vwap_ta) / vwap_ta
+        try:
+            # Assuming daily data, anchor='D' might work. Needs testing.
+            # Or calculate manually if ta.vwap doesn't fit use case.
+            vwap_ta = ta.vwap(df["high"], df["low"], df["close"], df["volume"])
+            if vwap_ta is not None:
+                features["vwap_ta"] = vwap_ta
+                features["dist_from_vwap_ta"] = (df["close"] - vwap_ta) / vwap_ta
 
-         except Exception as e:
-             logger.warning(f"Error calculating VWAP with pandas-ta: {e}. Falling back to rolling.")
+        except Exception as e:
+            logger.warning(
+                f"Error calculating VWAP with pandas-ta: {e}. Falling back to rolling."
+            )
 
     # Fallback or additional rolling VWAP calculation
-    for window in [20, 50]: # Shorter windows for rolling VWAP
-        vol_sum = df['volume'].rolling(window).sum()
-        vwap_roll = ((typical_price * df['volume']).rolling(window).sum() / vol_sum).replace([np.inf, -np.inf], np.nan)
+    for window in [20, 50]:  # Shorter windows for rolling VWAP
+        vol_sum = df["volume"].rolling(window).sum()
+        vwap_roll = (
+            (typical_price * df["volume"]).rolling(window).sum() / vol_sum
+        ).replace([np.inf, -np.inf], np.nan)
 
-        features[f'vwap_roll_{window}'] = vwap_roll
+        features[f"vwap_roll_{window}"] = vwap_roll
         # Distance from rolling VWAP
-        features[f'dist_from_vwap_roll_{window}'] = (df['close'] - vwap_roll) / vwap_roll
-
+        features[f"dist_from_vwap_roll_{window}"] = (
+            df["close"] - vwap_roll
+        ) / vwap_roll
 
     return features

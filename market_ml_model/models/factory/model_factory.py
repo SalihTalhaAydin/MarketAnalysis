@@ -3,8 +3,8 @@ Model factory for creating different types of ML models.
 """
 
 import logging
-from typing import Dict, Optional, Any, Callable
 import warnings
+from typing import Any, Callable, Dict, Optional
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -19,10 +19,14 @@ MODEL_FACTORY = {}
 # Import scikit-learn models with error handling
 try:
     from sklearn.ensemble import (
-        RandomForestClassifier, GradientBoostingClassifier,
-        AdaBoostClassifier, ExtraTreesClassifier, VotingClassifier
+        AdaBoostClassifier,
+        ExtraTreesClassifier,
+        GradientBoostingClassifier,
+        RandomForestClassifier,
+        VotingClassifier,
     )
     from sklearn.linear_model import LogisticRegression, SGDClassifier
+
     SKLEARN_AVAILABLE = True
 except ImportError:
     logger.error("scikit-learn not available for model creation")
@@ -31,6 +35,7 @@ except ImportError:
 # Try to import advanced ML libraries
 try:
     import xgboost as xgb
+
     XGBOOST_AVAILABLE = True
 except ImportError:
     logger.warning("XGBoost not installed. XGBoost models unavailable.")
@@ -38,6 +43,7 @@ except ImportError:
 
 try:
     import lightgbm as lgb
+
     LIGHTGBM_AVAILABLE = True
 except ImportError:
     logger.warning("LightGBM not installed. LightGBM models unavailable.")
@@ -45,6 +51,7 @@ except ImportError:
 
 try:
     from catboost import CatBoostClassifier, Pool
+
     CATBOOST_AVAILABLE = True
 except ImportError:
     logger.warning("CatBoost not installed. CatBoost models unavailable.")
@@ -53,12 +60,19 @@ except ImportError:
 # Try to import TensorFlow/Keras
 try:
     import tensorflow as tf
-    from tensorflow.keras.models import Sequential, Model
-    from tensorflow.keras.layers import ( # Updated import block
-        Dense, Dropout, LSTM, GRU, Bidirectional,
-        BatchNormalization, Input, Concatenate
+    from tensorflow.keras.layers import (
+        GRU,
+        LSTM,  # Updated import block
+        BatchNormalization,
+        Bidirectional,
+        Concatenate,
+        Dense,
+        Dropout,
+        Input,
     )
+    from tensorflow.keras.models import Model, Sequential
     from tensorflow.keras.optimizers import Adam
+
     TENSORFLOW_AVAILABLE = True
 except ImportError:
     logger.warning("TensorFlow not installed. Neural network models unavailable.")
@@ -75,13 +89,15 @@ def register_model_factory(model_type: str) -> Callable:
     Returns:
         Decorator function
     """
+
     def decorator(func: Callable) -> Callable:
         MODEL_FACTORY[model_type] = func
         return func
+
     return decorator
 
 
-@register_model_factory('random_forest')
+@register_model_factory("random_forest")
 def create_random_forest(params: Optional[Dict] = None) -> Any:
     """
     Create a Random Forest classifier with given parameters.
@@ -100,15 +116,15 @@ def create_random_forest(params: Optional[Dict] = None) -> Any:
 
     # Set defaults
     default_params = {
-        'n_estimators': 200,
-        'max_depth': None,
-        'min_samples_split': 2,
-        'min_samples_leaf': 1,
-        'max_features': 'sqrt',
-        'bootstrap': True,
-        'class_weight': 'balanced',
-        'random_state': 42,
-        'n_jobs': -1
+        "n_estimators": 200,
+        "max_depth": None,
+        "min_samples_split": 2,
+        "min_samples_leaf": 1,
+        "max_features": "sqrt",
+        "bootstrap": True,
+        "class_weight": "balanced",
+        "random_state": 42,
+        "n_jobs": -1,
     }
 
     # Update with provided params
@@ -117,7 +133,7 @@ def create_random_forest(params: Optional[Dict] = None) -> Any:
     return RandomForestClassifier(**default_params)
 
 
-@register_model_factory('gradient_boosting')
+@register_model_factory("gradient_boosting")
 def create_gradient_boosting(params: Optional[Dict] = None) -> Any:
     """
     Create a Gradient Boosting classifier with given parameters.
@@ -136,13 +152,13 @@ def create_gradient_boosting(params: Optional[Dict] = None) -> Any:
 
     # Set defaults
     default_params = {
-        'n_estimators': 100,
-        'learning_rate': 0.1,
-        'max_depth': 3,
-        'min_samples_split': 2,
-        'min_samples_leaf': 1,
-        'subsample': 1.0,
-        'random_state': 42
+        "n_estimators": 100,
+        "learning_rate": 0.1,
+        "max_depth": 3,
+        "min_samples_split": 2,
+        "min_samples_leaf": 1,
+        "subsample": 1.0,
+        "random_state": 42,
     }
 
     # Update with provided params
@@ -151,7 +167,7 @@ def create_gradient_boosting(params: Optional[Dict] = None) -> Any:
     return GradientBoostingClassifier(**default_params)
 
 
-@register_model_factory('xgboost')
+@register_model_factory("xgboost")
 def create_xgboost(params: Optional[Dict] = None) -> Any:
     """
     Create an XGBoost classifier with given parameters.
@@ -170,15 +186,15 @@ def create_xgboost(params: Optional[Dict] = None) -> Any:
 
     # Set defaults
     default_params = {
-        'n_estimators': 100,
-        'learning_rate': 0.1,
-        'max_depth': 6,
-        'subsample': 0.8,
-        'colsample_bytree': 0.8,
-        'objective': 'multi:softproba',
-        'use_label_encoder': False,
-        'eval_metric': 'mlogloss',
-        'random_state': 42
+        "n_estimators": 100,
+        "learning_rate": 0.1,
+        "max_depth": 6,
+        "subsample": 0.8,
+        "colsample_bytree": 0.8,
+        "objective": "multi:softproba",
+        "use_label_encoder": False,
+        "eval_metric": "mlogloss",
+        "random_state": 42,
     }
 
     # Update with provided params
@@ -187,7 +203,7 @@ def create_xgboost(params: Optional[Dict] = None) -> Any:
     return xgb.XGBClassifier(**default_params)
 
 
-@register_model_factory('lightgbm')
+@register_model_factory("lightgbm")
 def create_lightgbm(params: Optional[Dict] = None) -> Any:
     """
     Create a LightGBM classifier with given parameters.
@@ -206,14 +222,14 @@ def create_lightgbm(params: Optional[Dict] = None) -> Any:
 
     # Set defaults
     default_params = {
-        'n_estimators': 100,
-        'learning_rate': 0.1,
-        'num_leaves': 31,
-        'max_depth': -1,
-        'subsample': 0.8,
-        'colsample_bytree': 0.8,
-        'random_state': 42,
-        'n_jobs': -1
+        "n_estimators": 100,
+        "learning_rate": 0.1,
+        "num_leaves": 31,
+        "max_depth": -1,
+        "subsample": 0.8,
+        "colsample_bytree": 0.8,
+        "random_state": 42,
+        "n_jobs": -1,
     }
 
     # Update with provided params
@@ -222,7 +238,7 @@ def create_lightgbm(params: Optional[Dict] = None) -> Any:
     return lgb.LGBMClassifier(**default_params)
 
 
-@register_model_factory('catboost')
+@register_model_factory("catboost")
 def create_catboost(params: Optional[Dict] = None) -> Any:
     """
     Create a CatBoost classifier with given parameters.
@@ -241,13 +257,13 @@ def create_catboost(params: Optional[Dict] = None) -> Any:
 
     # Set defaults
     default_params = {
-        'iterations': 100,
-        'learning_rate': 0.1,
-        'depth': 6,
-        'l2_leaf_reg': 3,
-        'random_seed': 42,
-        'thread_count': -1,
-        'verbose': False
+        "iterations": 100,
+        "learning_rate": 0.1,
+        "depth": 6,
+        "l2_leaf_reg": 3,
+        "random_seed": 42,
+        "thread_count": -1,
+        "verbose": False,
     }
 
     # Update with provided params
@@ -256,7 +272,7 @@ def create_catboost(params: Optional[Dict] = None) -> Any:
     return CatBoostClassifier(**default_params)
 
 
-@register_model_factory('logistic_regression')
+@register_model_factory("logistic_regression")
 def create_logistic_regression(params: Optional[Dict] = None) -> Any:
     """
     Create a Logistic Regression classifier with given parameters.
@@ -275,12 +291,12 @@ def create_logistic_regression(params: Optional[Dict] = None) -> Any:
 
     # Set defaults
     default_params = {
-        'C': 1.0,
-        'penalty': 'l2',
-        'solver': 'lbfgs',
-        'max_iter': 1000,
-        'random_state': 42,
-        'n_jobs': -1
+        "C": 1.0,
+        "penalty": "l2",
+        "solver": "lbfgs",
+        "max_iter": 1000,
+        "random_state": 42,
+        "n_jobs": -1,
     }
 
     # Update with provided params
@@ -289,7 +305,7 @@ def create_logistic_regression(params: Optional[Dict] = None) -> Any:
     return LogisticRegression(**default_params)
 
 
-@register_model_factory('neural_network')
+@register_model_factory("neural_network")
 def create_neural_network(params: Optional[Dict] = None) -> Any:
     """
     Create a simple neural network classifier with given parameters.
@@ -308,13 +324,13 @@ def create_neural_network(params: Optional[Dict] = None) -> Any:
 
     # Set defaults
     default_params = {
-        'input_dim': 10,  # Must be provided or overridden
-        'num_classes': 3,  # Must be provided or overridden
-        'hidden_layers': [64, 32],
-        'dropout_rate': 0.2,
-        'learning_rate': 0.001,
-        'activation': 'relu',
-        'output_activation': 'softmax'
+        "input_dim": 10,  # Must be provided or overridden
+        "num_classes": 3,  # Must be provided or overridden
+        "hidden_layers": [64, 32],
+        "dropout_rate": 0.2,
+        "learning_rate": 0.001,
+        "activation": "relu",
+        "output_activation": "softmax",
     }
 
     # Update with provided params
@@ -324,35 +340,39 @@ def create_neural_network(params: Optional[Dict] = None) -> Any:
     model = Sequential()
 
     # First hidden layer
-    model.add(Dense(
-        default_params['hidden_layers'][0],
-        input_dim=default_params['input_dim'],
-        activation=default_params['activation']
-    ))
-    model.add(Dropout(default_params['dropout_rate']))
+    model.add(
+        Dense(
+            default_params["hidden_layers"][0],
+            input_dim=default_params["input_dim"],
+            activation=default_params["activation"],
+        )
+    )
+    model.add(Dropout(default_params["dropout_rate"]))
 
     # Additional hidden layers
-    for units in default_params['hidden_layers'][1:]:
-        model.add(Dense(units, activation=default_params['activation']))
-        model.add(Dropout(default_params['dropout_rate']))
+    for units in default_params["hidden_layers"][1:]:
+        model.add(Dense(units, activation=default_params["activation"]))
+        model.add(Dropout(default_params["dropout_rate"]))
 
     # Output layer
-    model.add(Dense(
-        default_params['num_classes'],
-        activation=default_params['output_activation']
-    ))
+    model.add(
+        Dense(
+            default_params["num_classes"],
+            activation=default_params["output_activation"],
+        )
+    )
 
     # Compile model
     model.compile(
-        optimizer=Adam(learning_rate=default_params['learning_rate']),
-        loss='categorical_crossentropy',
-        metrics=['accuracy']
+        optimizer=Adam(learning_rate=default_params["learning_rate"]),
+        loss="categorical_crossentropy",
+        metrics=["accuracy"],
     )
 
     return model
 
 
-@register_model_factory('lstm')
+@register_model_factory("lstm")
 def create_lstm_network(params: Optional[Dict] = None) -> Any:
     """
     Create an LSTM network for sequence classification.
@@ -371,15 +391,15 @@ def create_lstm_network(params: Optional[Dict] = None) -> Any:
 
     # Set defaults
     default_params = {
-        'input_shape': (10, 1),  # (sequence_length, features)
-        'num_classes': 3,
-        'lstm_units': [64, 32],
-        'dropout_rate': 0.2,
-        'recurrent_dropout': 0.2,
-        'dense_units': [32],
-        'learning_rate': 0.001,
-        'activation': 'relu',
-        'output_activation': 'softmax'
+        "input_shape": (10, 1),  # (sequence_length, features)
+        "num_classes": 3,
+        "lstm_units": [64, 32],
+        "dropout_rate": 0.2,
+        "recurrent_dropout": 0.2,
+        "dense_units": [32],
+        "learning_rate": 0.001,
+        "activation": "relu",
+        "output_activation": "softmax",
     }
 
     # Update with provided params
@@ -389,56 +409,64 @@ def create_lstm_network(params: Optional[Dict] = None) -> Any:
     model = Sequential()
 
     # First LSTM layer
-    if len(default_params['lstm_units']) == 1:
+    if len(default_params["lstm_units"]) == 1:
         # Only one LSTM layer - return sequences False
-        model.add(LSTM(
-            units=default_params['lstm_units'][0],
-            input_shape=default_params['input_shape'],
-            dropout=default_params['dropout_rate'],
-            recurrent_dropout=default_params['recurrent_dropout']
-        ))
+        model.add(
+            LSTM(
+                units=default_params["lstm_units"][0],
+                input_shape=default_params["input_shape"],
+                dropout=default_params["dropout_rate"],
+                recurrent_dropout=default_params["recurrent_dropout"],
+            )
+        )
     else:
         # Multiple LSTM layers - return sequences True
-        model.add(LSTM(
-            units=default_params['lstm_units'][0],
-            input_shape=default_params['input_shape'],
-            dropout=default_params['dropout_rate'],
-            recurrent_dropout=default_params['recurrent_dropout'],
-            return_sequences=True
-        ))
+        model.add(
+            LSTM(
+                units=default_params["lstm_units"][0],
+                input_shape=default_params["input_shape"],
+                dropout=default_params["dropout_rate"],
+                recurrent_dropout=default_params["recurrent_dropout"],
+                return_sequences=True,
+            )
+        )
 
     # Additional LSTM layers
-    for i, units in enumerate(default_params['lstm_units'][1:]):
-        return_sequences = i < len(default_params['lstm_units']) - 2
-        model.add(LSTM(
-            units=units,
-            dropout=default_params['dropout_rate'],
-            recurrent_dropout=default_params['recurrent_dropout'],
-            return_sequences=return_sequences
-        ))
+    for i, units in enumerate(default_params["lstm_units"][1:]):
+        return_sequences = i < len(default_params["lstm_units"]) - 2
+        model.add(
+            LSTM(
+                units=units,
+                dropout=default_params["dropout_rate"],
+                recurrent_dropout=default_params["recurrent_dropout"],
+                return_sequences=return_sequences,
+            )
+        )
 
     # Dense layers
-    for units in default_params['dense_units']:
-        model.add(Dense(units, activation=default_params['activation']))
-        model.add(Dropout(default_params['dropout_rate']))
+    for units in default_params["dense_units"]:
+        model.add(Dense(units, activation=default_params["activation"]))
+        model.add(Dropout(default_params["dropout_rate"]))
 
     # Output layer
-    model.add(Dense(
-        default_params['num_classes'],
-        activation=default_params['output_activation']
-    ))
+    model.add(
+        Dense(
+            default_params["num_classes"],
+            activation=default_params["output_activation"],
+        )
+    )
 
     # Compile model
     model.compile(
-        optimizer=Adam(learning_rate=default_params['learning_rate']),
-        loss='categorical_crossentropy',
-        metrics=['accuracy']
+        optimizer=Adam(learning_rate=default_params["learning_rate"]),
+        loss="categorical_crossentropy",
+        metrics=["accuracy"],
     )
 
     return model
 
 
-@register_model_factory('ensemble')
+@register_model_factory("ensemble")
 def create_ensemble(params: Optional[Dict] = None) -> Any:
     """
     Create an ensemble of multiple models.
@@ -457,9 +485,9 @@ def create_ensemble(params: Optional[Dict] = None) -> Any:
 
     # Set defaults
     default_params = {
-        'models': ['random_forest', 'gradient_boosting'],
-        'weights': None,
-        'voting': 'soft'
+        "models": ["random_forest", "gradient_boosting"],
+        "weights": None,
+        "voting": "soft",
     }
 
     # Update with provided params
@@ -467,7 +495,7 @@ def create_ensemble(params: Optional[Dict] = None) -> Any:
 
     # Create individual models
     estimators = []
-    for model_type in default_params['models']:
+    for model_type in default_params["models"]:
         if model_type in MODEL_FACTORY:
             # Pass specific params if provided for sub-models, else use defaults
             model_params = params.get(model_type, {})
@@ -484,8 +512,8 @@ def create_ensemble(params: Optional[Dict] = None) -> Any:
     # Create voting classifier
     ensemble = VotingClassifier(
         estimators=estimators,
-        voting=default_params['voting'],
-        weights=default_params['weights']
+        voting=default_params["voting"],
+        weights=default_params["weights"],
     )
 
     return ensemble

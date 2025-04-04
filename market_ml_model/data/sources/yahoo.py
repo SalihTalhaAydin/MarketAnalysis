@@ -2,10 +2,11 @@
 Yahoo Finance data source implementation.
 """
 
-import pandas as pd
 import logging
 import time
 from typing import Optional
+
+import pandas as pd
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -13,6 +14,7 @@ logger = logging.getLogger(__name__)
 # Import yfinance with error handling
 try:
     import yfinance as yf
+
     YFINANCE_AVAILABLE = True
 except ImportError:
     logger.warning("yfinance not installed. Yahoo Finance data source unavailable.")
@@ -25,7 +27,7 @@ def load_from_yahoo(
     end_date: str,
     interval: str = "1d",
     adjust_prices: bool = True,
-    retry_count: int = 3
+    retry_count: int = 3,
 ) -> Optional[pd.DataFrame]:
     """
     Load historical market data from Yahoo Finance.
@@ -46,24 +48,26 @@ def load_from_yahoo(
         return None
 
     logger.info(
-        f"Loading {interval} data for {ticker} from {start_date} to {end_date} from Yahoo Finance")
+        f"Loading {interval} data for {ticker} from {start_date} to {end_date} from Yahoo Finance"
+    )
 
     # Try multiple times in case of network issues
     for attempt in range(retry_count):
         try:
             # Use yfinance to download historical market data
             data = yf.download(
-                tickers=ticker,       # Ticker symbol(s)
-                start=start_date,     # Start date for data retrieval
-                end=end_date,         # End date for data retrieval
-                interval=interval,    # Data interval
+                tickers=ticker,  # Ticker symbol(s)
+                start=start_date,  # Start date for data retrieval
+                end=end_date,  # End date for data retrieval
+                interval=interval,  # Data interval
                 auto_adjust=adjust_prices,  # Adjust for splits/dividends
-                progress=False        # Suppress download progress bar
+                progress=False,  # Suppress download progress bar
             )
 
             if data.empty:
                 logger.warning(
-                    f"Attempt {attempt+1}/{retry_count}: No data for {ticker} from Yahoo Finance")
+                    f"Attempt {attempt+1}/{retry_count}: No data for {ticker} from Yahoo Finance"
+                )
                 time.sleep(1)  # Wait before retry
                 continue
 
@@ -71,18 +75,19 @@ def load_from_yahoo(
             data.columns = data.columns.str.lower()
 
             # Ensure we have expected columns
-            expected_columns = ['open', 'high', 'low', 'close', 'volume']
+            expected_columns = ["open", "high", "low", "close", "volume"]
             if not all(col in data.columns for col in expected_columns):
                 logger.warning(
-                    f"Missing expected columns in Yahoo data. Got: {data.columns.tolist()}")
+                    f"Missing expected columns in Yahoo data. Got: {data.columns.tolist()}"
+                )
 
             return data
 
         except Exception as e:
             logger.warning(
-                f"Attempt {attempt+1}/{retry_count}: Error downloading data for {ticker}: {e}")
+                f"Attempt {attempt+1}/{retry_count}: Error downloading data for {ticker}: {e}"
+            )
             time.sleep(1)  # Wait before retry
 
-    logger.error(
-        f"Failed to download data for {ticker} after {retry_count} attempts")
+    logger.error(f"Failed to download data for {ticker} after {retry_count} attempts")
     return None
