@@ -219,17 +219,21 @@ def engineer_features(
         # Replace NaNs with appropriate values based on column type
         for col in nan_columns:
             if np.issubdtype(processed_df[col].dtype, np.number):
-                # For numerical columns, calculate median excluding NaNs
-                col_median = processed_df[col].median()
-                # If median is NaN (e.g., all NaNs) or 0, fill with 0, otherwise fill with median
-                fill_value = (
-                    col_median if pd.notna(col_median) and col_median != 0 else 0
-                )
-                processed_df[col].fillna(fill_value, inplace=True)
+                # Check if the column is entirely NaN first
+                if processed_df[col].isnull().all():
+                    fill_value = 0
+                else:
+                    # For numerical columns, calculate median excluding NaNs
+                    col_median = processed_df[col].median()
+                    # If median is NaN (shouldn't happen now due to the check above) or 0, fill with 0, otherwise fill with median
+                    fill_value = (
+                        col_median if pd.notna(col_median) and col_median != 0 else 0
+                    )
+                processed_df[col] = processed_df[col].fillna(fill_value)
                 logger.debug(f"Filled NaNs in numeric column '{col}' with {fill_value}")
             else:
                 # For categorical/other columns, fill with 0 (or mode if appropriate)
-                processed_df[col].fillna(0, inplace=True)  # Using 0 as a simple default
+                processed_df[col] = processed_df[col].fillna(0)  # Using 0 as a simple default
                 logger.debug(f"Filled NaNs in non-numeric column '{col}' with 0")
 
     return processed_df
