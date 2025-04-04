@@ -43,6 +43,11 @@ setup(
             "pre-commit>=2.20.0",  # Added for pre-commit hooks
             "ruff>=0.1.0",  # Added for fast linting/formatting
         ],
+        "docs": [  # Added docs dependencies
+            "sphinx>=5.0.0",
+            "sphinx-rtd-theme>=1.0.0",
+            "myst-parser>=0.18.0",  # For Markdown support
+        ],
     },
     author="Your Name",
     author_email="your.email@example.com",
