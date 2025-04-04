@@ -224,10 +224,14 @@ def optimize_hyperparameters_random(
 
         cv_obj = KFold(n_splits=cv, shuffle=True, random_state=42)
 
+    # Remove n_iter from distributions if it exists, as it's a direct arg for RandomizedSearchCV
+    search_distributions = param_distributions.copy()
+    search_distributions.pop("n_iter", None)
+
     # Create randomized search
     random_search = RandomizedSearchCV(
         estimator=base_model,
-        param_distributions=param_distributions,
+        param_distributions=search_distributions,  # Use cleaned distributions
         n_iter=n_iter,
         cv=cv_obj,
         scoring=scoring,

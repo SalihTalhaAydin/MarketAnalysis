@@ -18,8 +18,8 @@ assets:
     # Optional: Specify timeframe if needed
     # timeframe: "1d" # e.g., '1m', '5m', '1h', '1d'
 
-# Feature Engineering Configuration
-features:
+# Feature Engineering Configuration (Corresponds to FeatureConfig object)
+feature_config:
   # Technical Indicators (using pandas-ta or ta library conventions)
   technical_indicators:
     - indicator: "rsi"
@@ -32,48 +32,56 @@ features:
       length: 14
     # Add more indicators as needed...
 
-  # Target Labeling Configuration (e.g., Triple Barrier Method)
-  labeling:
-    method: "triple_barrier" # Example method
-    params:
-      pt_sl: [1, 1] # Profit Take / Stop Loss multiples of ATR/volatility
-      holding_period: 10 # Max holding period in bars
-      min_return: 0.001 # Minimum return threshold for profit take/stop loss
-      volatility_lookback: 20 # Lookback period for volatility calculation (e.g., ATR)
-      volatility_target: 0.01 # Target volatility (optional, depends on method)
+  # Target variable config (Corresponds to FeatureConfig attributes)
+  target_type: "triple_barrier" # 'triple_barrier', 'directional'
+  # Parameters for Triple Barrier (if target_type is triple_barrier)
+  atr_multiplier_tp: 1.0 # Profit Take multiple (from pt_sl[0])
+  atr_multiplier_sl: 1.0 # Stop Loss multiple (from pt_sl[1])
+  max_holding_period: 10 # Max holding period in bars
+  # min_return: 0.001 # Not directly used by FeatureConfig init
+  # volatility_lookback: 20 # Not directly used by FeatureConfig init
+  # volatility_target: 0.01 # Not directly used by FeatureConfig init
 
-  # Feature Scaling/Normalization (optional)
-  scaling:
-    method: "StandardScaler" # e.g., "StandardScaler", "MinMaxScaler", null
-    apply_to: ["rsi", "sma_20", "sma_50"] # List of features to scale, or 'all'
+  # Feature Scaling/Normalization (optional) - Removed as not part of FeatureConfig init
+  # scaling:
+  #   method: "StandardScaler" # e.g., "StandardScaler", "MinMaxScaler", null
+  #   apply_to: ["rsi", "sma_20", "sma_50"] # List of features to scale, or 'all'
 
-# Model Configuration
-model:
-  type: "RandomForestClassifier" # e.g., "RandomForestClassifier", "XGBClassifier", "LGBMClassifier"
-  params: # Parameters specific to the chosen model type
-    n_estimators: 100
-    max_depth: 10
-    min_samples_leaf: 5
-    random_state: 42
-    class_weight: "balanced" # Handle class imbalance
-    # Add other relevant scikit-learn/xgboost/etc. parameters
+# Model Configuration (Corresponds to ModelConfig object)
+model_config:
+  model_type: "random_forest" # Use the key registered in model_factory.py
+  # Signal Generation Adjustments
+  probability_threshold: 0.5001 # Set very low threshold to force signals for testing
+  signal_trend_filter_ma: null # Disable trend filter
+  signal_volatility_filter_atr: null # Disable volatility filter
+  # Original model params (adjust if needed for lightgbm) - Removed as not part of ModelConfig init
+  # params: # Parameters specific to the chosen model type
+  #   n_estimators: 100
+  #   max_depth: 10
+  #   min_samples_leaf: 5
+  #   random_state: 42
+  #   class_weight: "balanced" # Handle class imbalance
+  #   # Add other relevant scikit-learn/xgboost/etc. parameters
 
-  # Feature Selection (optional)
-  feature_selection:
-    method: null # e.g., "SelectKBest", "RFE", null
-    params: {} # Parameters for the selection method
+  # Feature Selection (optional) - Removed as not part of ModelConfig init (handled in FeatureConfig)
+  # feature_selection:
+  #   method: null # e.g., "SelectKBest", "RFE", null
+  #   params: {} # Parameters for the selection method
 
-  # Hyperparameter Optimization (optional)
-  hyperopt:
-    enabled: false
-    method: "optuna" # e.g., "optuna", "hyperopt"
-    n_trials: 50
-    metric: "accuracy" # Metric to optimize (e.g., 'accuracy', 'f1', 'roc_auc')
-    direction: "maximize" # 'maximize' or 'minimize'
-    # Define search space if needed (specific to optuna/hyperopt)
-    search_space: {}
+  # Hyperparameter Optimization (optional) - Keep disabled for now
+  optimize_hyperparams: false # Corresponds to ModelConfig attribute
+  optimization_method: "random" # Default if optimize_hyperparams is true
+  optimization_trials: 25 # Default if optimize_hyperparams is true
+  # hyperopt: # This sub-section isn't directly used by ModelConfig
+  #   enabled: false # Commented out - handled by optimize_hyperparams above
+  #   method: "optuna" # e.g., "optuna", "hyperopt"
+  #   n_trials: 50
+  #   metric: "accuracy" # Metric to optimize (e.g., 'accuracy', 'f1', 'roc_auc')
+  #   direction: "maximize" # 'maximize' or 'minimize'
+  #   # Define search space if needed (specific to optuna/hyperopt)
+  #   search_space: {}
 
-# Walk-Forward Validation Configuration
+# Walk-Forward Validation Configuration # Ensure this starts at column 0
 walk_forward:
   enabled: true
   train_window_size: 252 # Number of periods (e.g., days) for initial training

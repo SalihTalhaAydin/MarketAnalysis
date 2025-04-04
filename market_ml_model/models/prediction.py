@@ -1279,26 +1279,20 @@ class SignalGenerator:
         signals["raw_signal"] = 0  # Initialize
 
         # --- Apply Signal Generation Logic ---
+        # Use the original threshold-based logic (or probability_weighted if configured)
         if self.signal_type == "threshold":
             signals.loc[prob_pos >= self.threshold, "raw_signal"] = 1
-            signals.loc[prob_neg >= self.threshold, "raw_signal"] = (
-                -1
-            )  # Assumes neg prob available
-            # Refine for binary case where only pos prob matters vs threshold
-            if probabilities.shape[1] == 2:
+            signals.loc[prob_neg >= self.threshold, "raw_signal"] = -1
+            if probabilities.shape[1] == 2:  # Binary case refinement
                 signals["raw_signal"] = 0
                 signals.loc[prob_pos >= self.threshold, "raw_signal"] = 1
-                signals.loc[prob_pos <= (1 - self.threshold), "raw_signal"] = (
-                    -1
-                )  # Signal short if prob_pos is low
-
+                signals.loc[prob_pos <= (1 - self.threshold), "raw_signal"] = -1
         elif self.signal_type == "probability_weighted":
-            # Example: Signal = 1 if prob_pos > 0.55, -1 if prob_pos < 0.45
             signals.loc[prob_pos > self.neutral_zone[1], "raw_signal"] = 1
             signals.loc[prob_pos < self.neutral_zone[0], "raw_signal"] = -1
-        else:
+        else:  # Fallback to threshold
             logger.warning(
-                f"Unsupported signal_type: {self.signal_type}. Using default threshold."
+                f"Unsupported signal_type: {self.signal_type}. Using threshold."
             )
             signals.loc[prob_pos >= self.threshold, "raw_signal"] = 1
             signals.loc[prob_neg >= self.threshold, "raw_signal"] = -1
@@ -1307,32 +1301,21 @@ class SignalGenerator:
         signals["filtered_signal"] = signals["raw_signal"]  # Start with raw signal
 
         if ohlc_data is not None and not ohlc_data.empty:
-            # Align OHLC data index with signals index
             ohlc_data_aligned = ohlc_data.reindex(signals.index)
-
-            # Apply Trend Filter
             if self.trend_filter_ma is not None:
                 signals["filtered_signal"] = self._apply_trend_filter(
                     signals, ohlc_data_aligned
                 )
-
-            # Apply Volatility Filter
             if self.volatility_filter_atr is not None:
                 signals["filtered_signal"] = self._apply_volatility_filter(
                     signals, ohlc_data_aligned
                 )
-        else:
-            if (
-                self.trend_filter_ma is not None
-                or self.volatility_filter_atr is not None
-            ):
-                logger.warning(
-                    "OHLC data not provided, cannot apply trend/volatility filters."
-                )
+        elif self.trend_filter_ma is not None or self.volatility_filter_atr is not None:
+            logger.warning(
+                "OHLC data not provided, cannot apply trend/volatility filters."
+            )
 
-        # Apply Cooling Period (applied per symbol if multi-symbol features)
-        # This requires state and is harder to vectorize simply.
-        # We'll apply it conceptually here, assuming single symbol for now.
+        # --- Apply Cooling Period ---
         signals["signal"] = signals["filtered_signal"]
         self._apply_cooling_period(signals)  # Modifies 'signal' column in place
 
@@ -1427,9 +1410,9 @@ class SignalGenerator:
                 if i - last_signal_idx > self.cooling_period:
                     last_signal_idx = i  # Allow signal, update last signal time
                 else:
-                    signals["signal"].iloc[
-                        i
-                    ] = 0  # Suppress signal due to cooling period
+                    signals["signal"].iloc[i] = (
+                        0  # Suppress signal due to cooling period
+                    )
         logger.info(f"Applied cooling period of {self.cooling_period} bars.")
 
     def plot_signal_history(

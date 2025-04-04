@@ -13,6 +13,7 @@ For a quick overview and installation instructions, please see the main `README.
    :maxdepth: 2
    :caption: Guides:
 
+   guides/getting_started
    guides/configuration
 
 .. toctree::
@@ -25,8 +26,9 @@ For a quick overview and installation instructions, please see the main `README.
    :maxdepth: 2
    :caption: Development:
 
-   development/dependency_management
    development/code_quality
+   development/dependency_management
+   development/debugging_notes
 
 .. toctree::
    :maxdepth: 2
