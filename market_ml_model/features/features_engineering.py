@@ -129,8 +129,48 @@ def engineer_features(
 
         if not all(col in processed_df.columns for col in required_cols):
             missing = [c for c in required_cols if c not in processed_df.columns]
-            logger.error(f"Missing required columns for Triple Barrier: {missing}")
-            return None
+            logger.warning(
+                f"Missing required columns for Triple Barrier: {missing}. Skipping Triple Barrier labeling."
+            )
+            # Skip labeling if required columns (likely from pandas-ta) are missing
+        else:
+            # --- Start of original Triple Barrier block ---
+            # Drop NaNs from features before calculating labels to ensure alignment
+            feature_cols = processed_df.columns.difference(["triple_barrier_label"])
+            processed_df.dropna(subset=feature_cols, inplace=True)
+
+            if processed_df.empty:
+                logger.error("DataFrame empty after dropping NaNs from features")
+                return None  # Return None if empty after dropping feature NaNs
+
+            # Calculate labels on the feature-cleaned data
+            processed_df["triple_barrier_label"] = get_triple_barrier_labels(
+                prices=processed_df["close"],
+                highs=processed_df["high"],
+                lows=processed_df["low"],
+                atr=processed_df["ATRr_10"],
+                atr_multiplier_tp=atr_multiplier_tp,
+                atr_multiplier_sl=atr_multiplier_sl,
+                max_holding_period=max_holding_period,
+                min_return_threshold=0.001,  # Small threshold to filter noise
+            )
+
+            # Drop rows where the label could not be calculated
+            initial_rows = len(processed_df)
+            processed_df.dropna(subset=["triple_barrier_label"], inplace=True)
+            rows_dropped = initial_rows - len(processed_df)
+
+            if rows_dropped > 0:
+                logger.info(
+                    f"Dropped {rows_dropped} rows due to NaNs from Triple Barrier calculation"
+                )
+
+            # Convert label to integer type after dropping NaNs
+            if "triple_barrier_label" in processed_df.columns:
+                processed_df["triple_barrier_label"] = processed_df[
+                    "triple_barrier_label"
+                ].astype(int)
+            # --- End of original Triple Barrier block ---
 
         # Drop NaNs from features before calculating labels to ensure alignment
         feature_cols = processed_df.columns.difference(["triple_barrier_label"])

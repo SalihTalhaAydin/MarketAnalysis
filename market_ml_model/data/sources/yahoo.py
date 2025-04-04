@@ -71,8 +71,28 @@ def load_from_yahoo(
                 time.sleep(1)  # Wait before retry
                 continue
 
-            # Convert column names to lowercase
-            data.columns = data.columns.str.lower()
+            # Convert column names to lowercase, handling potential MultiIndex from yfinance
+            if isinstance(data.columns, pd.MultiIndex):
+                # Keep only the first level (e.g., 'Open', 'Close') and convert to lowercase
+                data.columns = data.columns.get_level_values(0).str.lower()
+            else:
+                # Simple Index case
+                data.columns = data.columns.str.lower()
+
+            # Rename 'adj close' to 'close' if auto_adjust=True was used and 'close' doesn't exist
+            if "adj close" in data.columns and "close" not in data.columns:
+                data = data.rename(columns={"adj close": "close"})
+            elif (
+                adjust_prices
+                and "close" in data.columns
+                and "adj close" in data.columns
+            ):
+                # If auto_adjust=True but somehow both exist, prefer 'adj close' and rename it
+                data = data.drop(columns=["close"])
+                data = data.rename(columns={"adj close": "close"})
+            elif not adjust_prices and "adj close" in data.columns:
+                # If auto_adjust=False, remove 'adj close' if it exists
+                data = data.drop(columns=["adj close"])
 
             # Ensure we have expected columns
             expected_columns = ["open", "high", "low", "close", "volume"]

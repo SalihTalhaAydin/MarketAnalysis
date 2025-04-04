@@ -6,13 +6,13 @@ strategy_name: "Example_Momentum_Strategy"
 description: "A sample strategy using RSI and SMA features with a RandomForest model."
 log_level: "INFO" # Options: DEBUG, INFO, WARNING, ERROR, CRITICAL
 results_dir: "strategy_results" # Directory to save backtest results, plots, etc.
+data_start_date: "2018-01-01" # Overall start date for data loading
+data_end_date: "2023-12-31"   # Overall end date for data loading
 
 # Asset Configuration (List of assets to trade)
 assets:
   - symbol: "AAPL" # Ticker symbol (e.g., from yfinance)
-    start_date: "2018-01-01"
-    end_date: "2023-12-31"
-    data_source: "yfinance" # Or 'ccxt', 'alpha_vantage', etc.
+    data_source: "yahoo" # Use 'yahoo' as expected by the loader
     # Optional: Specify exchange if needed (e.g., for CCXT)
     # exchange: "binance"
     # Optional: Specify timeframe if needed

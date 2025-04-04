@@ -487,6 +487,23 @@ class StrategyConfig:
         # Create main configuration, remove run_id if present as it's generated
         config_dict.pop("strategy_run_id", None)
 
+        # Remove other top-level keys from YAML that are not direct __init__ args
+        # These were used to structure the YAML but their contents are handled
+        # by the nested config objects created above.
+        config_dict.pop("features", None)
+        config_dict.pop("model", None)  # Note: model_config was handled above
+        config_dict.pop(
+            "walk_forward", None
+        )  # Note: walkforward_config was handled above
+        config_dict.pop("trading", None)  # Not used directly in StrategyConfig init
+        config_dict.pop(
+            "market_regime", None
+        )  # Not used directly in StrategyConfig init
+        config_dict.pop("log_level", None)  # Handled separately by logging setup
+        # 'results_dir' is used to construct self.output_dir, keep it for now if needed, or pop if handled differently
+        # Let's assume 'output_dir' in __init__ handles this, so pop 'results_dir'
+        config_dict.pop("results_dir", None)  # Pop if 'output_dir' is the intended arg
+
         return cls(
             assets=assets,
             feature_config=feature_config,
@@ -844,16 +861,16 @@ class EnhancedTradingStrategy:
             if config.model_config.regime_adaptation_enabled
             else None
         )  # Example: 3 regimes
-        self.models: Dict[str, str] = (
-            {}
-        )  # Stores paths to saved models (asset_symbol[_regime_X] -> path)
+        self.models: Dict[
+            str, str
+        ] = {}  # Stores paths to saved models (asset_symbol[_regime_X] -> path)
         self.predictors: Dict[str, ModelPredictorBase] = {}  # Stores loaded predictors
-        self.signal_generators: Dict[str, SignalGenerator] = (
-            {}
-        )  # Stores signal generators per asset/model_key
-        self.results: Dict[str, Any] = (
-            {}
-        )  # Stores results per asset or walk-forward step
+        self.signal_generators: Dict[
+            str, SignalGenerator
+        ] = {}  # Stores signal generators per asset/model_key
+        self.results: Dict[
+            str, Any
+        ] = {}  # Stores results per asset or walk-forward step
 
         # Set logging level based on debug mode
         log_level = logging.DEBUG if config.debug_mode else logging.INFO
@@ -968,7 +985,8 @@ class EnhancedTradingStrategy:
             # Pass relevant parts of feature config to the engineer_features function
             feature_df = engineer_features(
                 df=data,  # Pass the preprocessed data
-                feature_config=self.config.feature_config,  # Pass the whole config object
+                # Pass feature config as a dictionary
+                feature_config=self.config.feature_config.to_dict(),
             )
 
             if feature_df is None or feature_df.empty:
@@ -1947,76 +1965,111 @@ class EnhancedTradingStrategy:
         # Consider potential race conditions or use ProcessPoolExecutor if heavy CPU tasks.
         use_parallel = self.config.parallel_processing and len(self.config.assets) > 1
         max_workers = os.cpu_count() if use_parallel else 1
-        Executor = (
-            concurrent.futures.ThreadPoolExecutor
-            if use_parallel
-            else concurrent.futures.SequentialExecutor
-        )  # Use SequentialExecutor for no parallelism
 
         logger.info(
             f"Parallel Processing: {'Enabled' if use_parallel else 'Disabled'} (Max Workers: {max_workers})"
         )
 
-        with Executor(max_workers=max_workers) as executor:
-            future_to_asset = {}
-            for asset_config in self.config.assets:
-                logger.info(f"Submitting job for asset: {asset_config.symbol}")
-                # Submit either walk-forward or single backtest based on config
-                if self.config.walkforward_config.enabled:
-                    future = executor.submit(
-                        self.run_walk_forward_validation, asset_config
-                    )
-                else:
-                    # Define function for single run to submit
-                    def run_single_asset(asset_cfg):
-                        logger.info(f"Starting single run for {asset_cfg.symbol}")
-                        data = self.load_data(asset_cfg)
-                        if data is None:
-                            return {"status": "error", "message": "Data loading failed"}
-                        features, target = self.engineer_features(data, asset_cfg)
-                        if features is None:
-                            return {
-                                "status": "error",
-                                "message": "Feature engineering failed",
-                            }
-                        model_path = self.train_model(features, target, asset_cfg)
-                        if model_path is None:
-                            return {
-                                "status": "error",
-                                "message": "Model training failed",
-                            }
-                        # Generate predictions on the *entire* dataset for backtest
-                        predictions = self.generate_predictions(
-                            features, asset_cfg
-                        )  # Use original features df
-                        if predictions is None:
-                            return {"status": "error", "message": "Prediction failed"}
-                        signals = self.generate_signals(
-                            predictions, data, asset_cfg
-                        )  # Pass original OHLC data
-                        if signals is None:
-                            return {
-                                "status": "error",
-                                "message": "Signal generation failed",
-                            }
-                        backtest_results = self.backtest_signals(
-                            signals, data, asset_cfg
-                        )  # Pass original OHLC data
-                        return {
-                            "backtest_summary": backtest_results,
-                            "model_path": model_path,
+        # Define function for single run (used in both parallel and sequential)
+        def run_single_asset(asset_cfg):
+            logger.info(f"Starting single run for {asset_cfg.symbol}")
+            data = self.load_data(asset_cfg)
+            if data is None:
+                return {"status": "error", "message": "Data loading failed"}
+            features, target = self.engineer_features(data, asset_cfg)
+            if features is None:
+                return {
+                    "status": "error",
+                    "message": "Feature engineering failed",
+                }
+            model_path = self.train_model(features, target, asset_cfg)
+            if model_path is None:
+                return {
+                    "status": "error",
+                    "message": "Model training failed",
+                }
+            # Generate predictions on the *entire* dataset for backtest
+            predictions = self.generate_predictions(
+                features, asset_cfg
+            )  # Use original features df
+            if predictions is None:
+                return {"status": "error", "message": "Prediction failed"}
+            signals = self.generate_signals(
+                predictions, data, asset_cfg
+            )  # Pass original OHLC data
+            if signals is None:
+                return {
+                    "status": "error",
+                    "message": "Signal generation failed",
+                }
+            backtest_results = self.backtest_signals(
+                signals, data, asset_cfg
+            )  # Pass original OHLC data
+            return {
+                "backtest_summary": backtest_results,
+                "model_path": model_path,
+            }
+
+        if use_parallel:
+            with concurrent.futures.ThreadPoolExecutor(
+                max_workers=max_workers
+            ) as executor:
+                future_to_asset = {}
+                for asset_config in self.config.assets:
+                    logger.info(f"Submitting job for asset: {asset_config.symbol}")
+                    # Submit either walk-forward or single backtest based on config
+                    if self.config.walkforward_config.enabled:
+                        future = executor.submit(
+                            self.run_walk_forward_validation, asset_config
+                        )
+                    else:
+                        future = executor.submit(run_single_asset, asset_config)
+                    future_to_asset[future] = asset_config.symbol
+
+                # Collect results from parallel execution
+                for future in concurrent.futures.as_completed(future_to_asset):
+                    asset_symbol = future_to_asset[future]
+                    try:
+                        result = future.result()  # Add timeout?
+                        all_results[asset_symbol] = result
+                        status = (
+                            result.get("status", "completed")
+                            if isinstance(result, dict)
+                            else "completed"
+                        )
+                        logger.info(
+                            f"Job finished for {asset_symbol}. Status: {status}"
+                        )
+                    except Exception as exc:
+                        logger.exception(
+                            f"Asset {asset_symbol} generated an exception during execution: {exc}"
+                        )
+                        all_results[asset_symbol] = {
+                            "status": "error",
+                            "message": str(exc),
                         }
-
-                    future = executor.submit(run_single_asset, asset_config)
-
-                future_to_asset[future] = asset_config.symbol
-
-            # Collect results
-            for future in concurrent.futures.as_completed(future_to_asset):
-                asset_symbol = future_to_asset[future]
+        else:
+            # Execute sequentially
+            for asset_config in self.config.assets:
+                asset_symbol = asset_config.symbol
+                logger.info(f"Running job sequentially for asset: {asset_symbol}")
                 try:
-                    result = future.result()  # Add timeout?
+                    if self.config.walkforward_config.enabled:
+                        result = self.run_walk_forward_validation(asset_config)
+                    else:
+                        result = run_single_asset(asset_config)
                     all_results[asset_symbol] = result
+                    status = (
+                        result.get("status", "completed")
+                        if isinstance(result, dict)
+                        else "completed"
+                    )
+                    logger.info(f"Job finished for {asset_symbol}. Status: {status}")
+                except Exception as exc:
+                    logger.exception(
+                        f"Asset {asset_symbol} generated an exception during sequential execution: {exc}"
+                    )
+                    all_results[asset_symbol] = {"status": "error", "message": str(exc)}
                     status = (
                         result.get("status", "completed")
                         if isinstance(result, dict)
