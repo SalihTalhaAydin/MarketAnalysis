@@ -1,6 +1,7 @@
 """
 Data caching functionality.
 """
+
 import logging
 import os
 import pickle
@@ -26,7 +27,9 @@ class DataCache:
         self.cache_dir = cache_dir
         self.expiry_days = expiry_days
         os.makedirs(self.cache_dir, exist_ok=True)
-        logger.info(f"DataCache initialized. Cache directory: {self.cache_dir}, Expiry: {self.expiry_days} days")
+        logger.info(
+            f"DataCache initialized. Cache directory: {self.cache_dir}, Expiry: {self.expiry_days} days"
+        )
 
     def get_cache_path(
         self, ticker: str, start_date: str, end_date: str, interval: str
@@ -68,8 +71,10 @@ class DataCache:
                 os.remove(cache_path)
                 return None
         except OSError as e:
-            logger.warning(f"Error checking cache file modification time for {cache_path}: {e}")
-            return None # Treat as expired if we can't check time
+            logger.warning(
+                f"Error checking cache file modification time for {cache_path}: {e}"
+            )
+            return None  # Treat as expired if we can't check time
 
         # Load data from cache
         try:
@@ -78,11 +83,15 @@ class DataCache:
             logger.debug(f"Cache hit: {cache_path}")
             return data
         except (pickle.UnpicklingError, EOFError, OSError) as e:
-            logger.error(f"Error loading data from cache file {cache_path}: {e}. Removing corrupt file.")
+            logger.error(
+                f"Error loading data from cache file {cache_path}: {e}. Removing corrupt file."
+            )
             try:
                 os.remove(cache_path)
             except OSError as remove_err:
-                logger.error(f"Failed to remove corrupt cache file {cache_path}: {remove_err}")
+                logger.error(
+                    f"Failed to remove corrupt cache file {cache_path}: {remove_err}"
+                )
             return None
 
     def save_to_cache(self, data: pd.DataFrame, cache_path: str) -> None:
@@ -94,7 +103,9 @@ class DataCache:
             cache_path: Path to save the cache file.
         """
         if not isinstance(data, pd.DataFrame) or data.empty:
-            logger.warning(f"Attempted to cache invalid or empty data for {cache_path}. Skipping.")
+            logger.warning(
+                f"Attempted to cache invalid or empty data for {cache_path}. Skipping."
+            )
             return
 
         try:
