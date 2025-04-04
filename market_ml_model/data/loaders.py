@@ -131,13 +131,13 @@ class DataLoader:
         self.config = config or DataLoaderConfig()
 
         # Initialize cache if enabled
-        if self.config.use_cache and self.config.cache_dir:
-            self.cache = DataCache(
-                cache_dir=self.config.cache_dir,
-                expiry_days=self.config.cache_expiry_days
-            )
-        else:
-            self.cache = None
+        # if self.config.use_cache and self.config.cache_dir:
+        #     self.cache = DataCache(
+        #         cache_dir=self.config.cache_dir,
+        #         expiry_days=self.config.cache_expiry_days
+        #     )
+        # else:
+        self.cache = None # Keep self.cache defined as None for now
 
         # Last API call timestamp for rate limiting
         self.last_api_call = 0
@@ -175,14 +175,14 @@ class DataLoader:
             f"Loading {ticker} data from {start_date} to {end_date} (interval: {interval})")
 
         # Check cache first if enabled
-        if self.cache and not force_reload:
-            cache_path = self.cache.get_cache_path(
-                ticker, start_date, end_date, interval)
-            cached_data = self.cache.get_cached_data(cache_path)
-
-            if cached_data is not None:
-                logger.info(f"Retrieved {ticker} data from cache")
-                return cached_data
+        # if self.cache and not force_reload:
+        #     cache_path = self.cache.get_cache_path(
+        #         ticker, start_date, end_date, interval)
+        #     cached_data = self.cache.get_cached_data(cache_path)
+        #
+        #     if cached_data is not None:
+        #         logger.info(f"Retrieved {ticker} data from cache")
+        #         return cached_data
 
         # Apply rate limiting
         self._apply_rate_limit()
@@ -244,10 +244,10 @@ class DataLoader:
             return None
 
         # Save to cache if successful
-        if data is not None and self.cache:
-            cache_path = self.cache.get_cache_path(
-                ticker, start_date, end_date, interval)
-            self.cache.save_to_cache(data, cache_path)
+        # if data is not None and self.cache:
+        #     cache_path = self.cache.get_cache_path(
+        #         ticker, start_date, end_date, interval)
+        #     self.cache.save_to_cache(data, cache_path)
 
         return data
 

@@ -179,17 +179,16 @@ def backtest_strategy(
                         (atr_multiplier_tp *
                          atr_value) if atr_multiplier_tp is not None else None
             else:
-                # Default fixed percentage stops
+                # Default fixed percentage stops (1% SL, 2% TP)
+                # Calculate these regardless of atr_multiplier values when use_dynamic_stops is False
                 if prev_signal == 1:  # Long signal
-                    stop_loss = prev_close * \
-                        (1 - 0.01) if atr_multiplier_sl is not None else None
-                    take_profit = prev_close * \
-                        (1 + 0.02) if atr_multiplier_tp is not None else None
+                    stop_loss = prev_close * (1 - 0.01)
+                    take_profit = prev_close * (1 + 0.02)
                 else:  # Short signal
-                    stop_loss = prev_close * \
-                        (1 + 0.01) if atr_multiplier_sl is not None else None
-                    take_profit = prev_close * \
-                        (1 - 0.02) if atr_multiplier_tp is not None else None
+                    stop_loss = prev_close * (1 + 0.01)
+                    take_profit = prev_close * (1 - 0.02)
+                # Fixed stops are calculated and should be used unless explicitly disabled
+                # by a different mechanism (not currently implemented based on atr_multiplier being None)
 
             # Calculate entry price with slippage
             entry_price = prev_close * \

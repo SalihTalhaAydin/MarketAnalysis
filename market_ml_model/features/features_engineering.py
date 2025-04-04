@@ -193,24 +193,28 @@ def engineer_features(
         .str.strip('_')  # Remove leading/trailing underscores
     )
 
-    # Final check for NaNs in the processed DataFrame
+    # NOTE: Final NaN handling moved to the end of the function
+    logger.info(
+        f"Feature engineering complete. DataFrame shape: {processed_df.shape}")
+
+    # --- Final NaN Handling (Moved Here) ---
+    # Final check for NaNs in the processed DataFrame just before returning
     nan_columns = processed_df.columns[processed_df.isna().any()].tolist()
     if nan_columns:
         logger.warning(
-            f"NaN values present in columns after processing: {nan_columns}")
+            f"NaN values present in columns after final processing: {nan_columns}. Filling...")
         # Replace NaNs with appropriate values based on column type
         for col in nan_columns:
             if np.issubdtype(processed_df[col].dtype, np.number):
-                # For numerical columns, use median or 0
-                if processed_df[col].median() != 0:
-                    processed_df[col].fillna(
-                        processed_df[col].median(), inplace=True)
-                else:
-                    processed_df[col].fillna(0, inplace=True)
+                # For numerical columns, calculate median excluding NaNs
+                col_median = processed_df[col].median()
+                # If median is NaN (e.g., all NaNs) or 0, fill with 0, otherwise fill with median
+                fill_value = col_median if pd.notna(col_median) and col_median != 0 else 0
+                processed_df[col].fillna(fill_value, inplace=True)
+                logger.debug(f"Filled NaNs in numeric column '{col}' with {fill_value}")
             else:
-                # For categorical/other columns, use most frequent or 0
-                processed_df[col].fillna(0, inplace=True)
+                # For categorical/other columns, fill with 0 (or mode if appropriate)
+                processed_df[col].fillna(0, inplace=True) # Using 0 as a simple default
+                logger.debug(f"Filled NaNs in non-numeric column '{col}' with 0")
 
-    logger.info(
-        f"Feature engineering complete. DataFrame shape: {processed_df.shape}")
     return processed_df

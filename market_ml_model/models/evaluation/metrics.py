@@ -226,7 +226,16 @@ def compute_feature_importance(
             # Use SHAP values for feature importance
             try:
                 # Create explainer - handle different model types
-                if isinstance(model, (xgb.XGBClassifier, lgb.LGBMClassifier, CatBoostClassifier)):
+                # Check availability flags and use module aliases if available
+                is_tree_model = False
+                if XGBOOST_AVAILABLE and xgb and isinstance(model, xgb.XGBClassifier):
+                    is_tree_model = True
+                elif LIGHTGBM_AVAILABLE and lgb and isinstance(model, lgb.LGBMClassifier):
+                    is_tree_model = True
+                elif CATBOOST_AVAILABLE and CatBoostClassifier and isinstance(model, CatBoostClassifier):
+                    is_tree_model = True
+
+                if is_tree_model:
                      explainer = shap.TreeExplainer(model)
                 elif hasattr(model, 'predict_proba'):
                      explainer = shap.KernelExplainer(model.predict_proba, X) # Use KernelExplainer for others
