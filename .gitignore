@@ -43,7 +43,7 @@ cover/
 *.pot
 
 # Django stuff:
-*.log
+# *.log  <- Covered by general rule below
 local_settings.py
 db.sqlite3
 db.sqlite3-journal
@@ -111,11 +111,12 @@ cython_debug/
 Thumbs.db
 
 # --- Project Specific ---
-# Ignore data files (potentially large or sensitive)
-# market_ml_model/data/
 
-# Ignore saved models (if applicable and large)
-# market_ml_model/models/
+# Ignore data cache
+market_ml_model/data/cache/
 
-# Ignore notebooks checkpoints (already covered by .ipynb_checkpoints)
-# market_ml_model/notebooks/.ipynb_checkpoints/
+# Ignore strategy run results (models, reports, etc.)
+strategy_results/
+
+# Ignore general log files
+*.log
