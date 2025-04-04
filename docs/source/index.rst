@@ -4,15 +4,10 @@
    contain the root `toctree` directive.
 
 Welcome to the MarketAnalysis Framework Documentation!
-====================================================
+======================================================
 
 This framework provides tools for developing, training, and backtesting automated trading strategies based on machine learning.
-
-.. toctree::
-   :maxdepth: 2
-   :caption: Getting Started:
-
-   readme_link
+For a quick overview and installation instructions, please see the main `README.md <../../README.md>`_ file.
 
 .. toctree::
    :maxdepth: 2
@@ -24,7 +19,7 @@ This framework provides tools for developing, training, and backtesting automate
    :maxdepth: 2
    :caption: Architecture & Design:
 
-   architecture/architectural_plan
+   architecture/ARCHITECTURAL_PLAN
 
 .. toctree::
    :maxdepth: 2
@@ -50,4 +45,4 @@ Indices and tables
 .. note::
    This documentation is under construction.
 
-.. _readme_link: ../../readme.md
+# Removed readme link from toctree, added inline link above.
