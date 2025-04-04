@@ -12,6 +12,8 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import numpy as np
 import pandas as pd
 
+# Import cache module
+from .cache.cache import DataCache
 from .sources.alpha_vantage import load_from_alpha_vantage
 from .sources.crypto import load_from_crypto
 from .sources.csv_loader import load_from_csv
@@ -23,10 +25,6 @@ from .sources.yahoo import load_from_yahoo
 
 # Import transformations
 from .transformations import align_data, detect_outliers, handle_outliers, resample_data
-
-# Import cache module
-# from .cache.cache import DataCache # Commented out due to missing module/file
-
 
 # Setup logging
 logger = logging.getLogger(__name__)

@@ -657,7 +657,11 @@ def calculate_vwap_features(df: pd.DataFrame) -> Dict[str, pd.Series]:
             vwap_ta = ta.vwap(df["high"], df["low"], df["close"], df["volume"])
             if vwap_ta is not None:
                 features["vwap_ta"] = vwap_ta
-                features["dist_from_vwap_ta"] = (df["close"] - vwap_ta) / vwap_ta
+                # Avoid division by zero or invalid values
+                vwap_safe = vwap_ta.replace(0, np.nan).reindex_like(
+                    df["close"]
+                )  # Align index
+                features["dist_from_vwap_ta"] = (df["close"] - vwap_safe) / vwap_safe
 
         except Exception as e:
             logger.warning(

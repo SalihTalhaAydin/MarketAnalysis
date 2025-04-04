@@ -33,6 +33,7 @@ setup(
             "pylint>=2.15.0",
             "black>=23.0.0",  # Added black
             "isort>=5.10.0",  # Added isort
+            "pytest-mock>=3.10.0",  # Added for mocker fixture
         ],
     },
     author="Your Name",

@@ -16,7 +16,7 @@ FEATURES_PATH = "market_ml_model.features.features_engineering"
 @pytest.fixture
 def sample_ohlcv_df():
     """Provides a basic OHLCV DataFrame."""
-    dates = pd.date_range(start="2023-01-01 09:00", periods=20, freq="H")
+    dates = pd.date_range(start="2023-01-01 09:00", periods=20, freq="h")
     data = {
         "open": np.linspace(100, 105, 20) + np.random.randn(20) * 0.1,
         "high": np.linspace(100.5, 105.5, 20) + np.random.randn(20) * 0.1,

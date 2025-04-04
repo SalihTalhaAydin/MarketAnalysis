@@ -61,13 +61,15 @@ def calculate_returns_metrics(returns: pd.Series) -> Dict[str, float]:
     metrics["avg_loss"] = lose_days.mean() if len(lose_days) > 0 else 0
 
     # Return volatility
-    metrics["volatility"] = returns.std() * np.sqrt(252)  # Annualized
+    with np.errstate(divide="ignore", invalid="ignore"):
+        metrics["volatility"] = returns.std() * np.sqrt(252)  # Annualized
 
     # Downside risk measures
     downside_returns = returns[returns < 0]
-    metrics["downside_volatility"] = (
-        downside_returns.std() * np.sqrt(252) if len(downside_returns) > 0 else 0
-    )
+    with np.errstate(divide="ignore", invalid="ignore"):
+        metrics["downside_volatility"] = (
+            downside_returns.std() * np.sqrt(252) if len(downside_returns) > 0 else 0
+        )
 
     # Calculate cumulative returns for drawdown
     cumulative_returns = (1 + returns).cumprod()

@@ -284,6 +284,13 @@ def handle_outliers(
                 lower_threshold = valid_data.quantile(lower_bound / 100)
                 upper_threshold = valid_data.quantile(upper_bound / 100)
 
+                # Ensure column can handle float thresholds if necessary
+                if pd.api.types.is_integer_dtype(result[col].dtype) and (
+                    isinstance(lower_threshold, float)
+                    or isinstance(upper_threshold, float)
+                ):
+                    result[col] = result[col].astype(float)
+
                 # Replace outliers with threshold values
                 result.loc[col_data < lower_threshold, col] = lower_threshold
                 result.loc[col_data > upper_threshold, col] = upper_threshold
