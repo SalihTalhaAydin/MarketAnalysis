@@ -2,10 +2,11 @@
 Triple barrier method for labeling financial data.
 """
 
-import pandas as pd
-import numpy as np
 import logging
 from typing import Optional
+
+import numpy as np
+import pandas as pd
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -19,7 +20,7 @@ def get_triple_barrier_labels(
     atr_multiplier_tp: float,
     atr_multiplier_sl: float,
     max_holding_period: int,
-    min_return_threshold: float = 0.0
+    min_return_threshold: float = 0.0,
 ) -> pd.Series:
     """
     Enhanced Triple Barrier Method for labeling.
@@ -70,9 +71,9 @@ def get_triple_barrier_labels(
         if i + 1 >= n or lookahead_end_idx <= i + 1:
             continue
 
-        window_highs = highs.iloc[i+1:lookahead_end_idx]
-        window_lows = lows.iloc[i+1:lookahead_end_idx]
-        window_closes = prices.iloc[i+1:lookahead_end_idx]
+        window_highs = highs.iloc[i + 1 : lookahead_end_idx]
+        window_lows = lows.iloc[i + 1 : lookahead_end_idx]
+        window_closes = prices.iloc[i + 1 : lookahead_end_idx]
 
         # Find the first time TP or SL is hit within the window
         tp_hit_indices = window_highs[window_highs >= tp].index
@@ -87,8 +88,12 @@ def get_triple_barrier_labels(
         # Check for TP or SL hits
         if tp_hit_time is not None and sl_hit_time is not None:
             # Both hit, use the earliest
-            outcome = 1 if prices.index.get_loc(
-                tp_hit_time) <= prices.index.get_loc(sl_hit_time) else -1
+            outcome = (
+                1
+                if prices.index.get_loc(tp_hit_time)
+                <= prices.index.get_loc(sl_hit_time)
+                else -1
+            )
         elif tp_hit_time is not None:
             outcome = 1  # Only TP hit
         elif sl_hit_time is not None:

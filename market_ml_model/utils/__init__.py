@@ -3,15 +3,11 @@ Utility functions for various modules.
 """
 
 from .metrics import (
-    calculate_returns_metrics,
+    calculate_alpha_beta,
     calculate_drawdowns,
-    calculate_alpha_beta
+    calculate_returns_metrics,
 )
-from .visualization import (
-    plot_equity_curve,
-    plot_drawdowns,
-    plot_monthly_returns
-)
+from .visualization import plot_drawdowns, plot_equity_curve, plot_monthly_returns
 
 __all__ = [
     # Metrics

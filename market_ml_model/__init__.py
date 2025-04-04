@@ -10,10 +10,10 @@ __version__ = "0.1.0"
 # Import key components for easy access
 from .data import DataLoader, load_data
 from .features import engineer_features
-from .models import train_classification_model, predict_with_model, create_model
-from .trading import backtest_strategy, TradeManager
-from .strategy.main import run_trading_strategy, StrategyConfig # Use explicit path
-from .utils import calculate_returns_metrics # Example utility import
+from .models import create_model, predict_with_model, train_classification_model
+from .strategy.main import StrategyConfig, run_trading_strategy  # Use explicit path
+from .trading import TradeManager, backtest_strategy
+from .utils import calculate_returns_metrics  # Example utility import
 
 __all__ = [
     # Version

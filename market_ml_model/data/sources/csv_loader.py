@@ -2,9 +2,10 @@
 CSV data source implementation.
 """
 
-import pandas as pd
 import logging
 from typing import Optional
+
+import pandas as pd
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -14,8 +15,8 @@ def load_from_csv(
     file_path: str,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-    date_column: str = 'date',
-    date_format: Optional[str] = None
+    date_column: str = "date",
+    date_format: Optional[str] = None,
 ) -> Optional[pd.DataFrame]:
     """
     Load market data from CSV file.
@@ -43,8 +44,7 @@ def load_from_csv(
 
         # Convert date column to datetime
         try:
-            data[date_column] = pd.to_datetime(
-                data[date_column], format=date_format)
+            data[date_column] = pd.to_datetime(data[date_column], format=date_format)
         except Exception as e:
             logger.error(f"Failed to parse date column: {e}")
             return None
@@ -68,10 +68,11 @@ def load_from_csv(
         data = data.sort_index()
 
         # Ensure we have expected columns
-        expected_columns = ['open', 'high', 'low', 'close']
+        expected_columns = ["open", "high", "low", "close"]
         if not all(col in data.columns for col in expected_columns):
             logger.warning(
-                f"Missing expected columns in CSV data. Got: {data.columns.tolist()}")
+                f"Missing expected columns in CSV data. Got: {data.columns.tolist()}"
+            )
 
         return data
 

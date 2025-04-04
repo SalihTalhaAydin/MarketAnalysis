@@ -2,19 +2,20 @@
 Trade simulation system for backtesting strategies.
 """
 
-import pandas as pd
-import numpy as np
 import logging
 import os
 import time
-from typing import Dict, List, Optional, Tuple, Union, Any
 from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional, Tuple, Union
 
-# Import from position sizing
-from .position.position_sizing import calculate_position_size
+import numpy as np
+import pandas as pd
 
 # Import utils
 from ..utils.metrics import calculate_returns_metrics
+
+# Import from position sizing
+from .position.position_sizing import calculate_position_size
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -38,7 +39,7 @@ class Trade:
         trailing_stop: bool = False,
         trailing_stop_distance: float = 0.0,
         trailing_stop_activation: float = 0.0,
-        tags: Optional[List[str]] = None
+        tags: Optional[List[str]] = None,
     ):
         """
         Initialize a trade object.
@@ -83,7 +84,7 @@ class Trade:
         # State tracking
         self.is_active = True
         self.max_favorable_excursion = 0.0  # Best profit seen during trade
-        self.max_adverse_excursion = 0.0    # Worst drawdown seen during trade
+        self.max_adverse_excursion = 0.0  # Worst drawdown seen during trade
         self.current_price = entry_price
         self.trailing_stop_price = None
         self.trailing_stop_activated = False
@@ -95,11 +96,9 @@ class Trade:
 
         # Initialize trailing stop if used
         if trailing_stop and direction == 1:  # Long position
-            self.trailing_stop_price = entry_price * \
-                (1 - trailing_stop_distance)
+            self.trailing_stop_price = entry_price * (1 - trailing_stop_distance)
         elif trailing_stop and direction == -1:  # Short position
-            self.trailing_stop_price = entry_price * \
-                (1 + trailing_stop_distance)
+            self.trailing_stop_price = entry_price * (1 + trailing_stop_distance)
 
     def update(self, timestamp: Any, current_price: float) -> bool:
         """
@@ -119,23 +118,29 @@ class Trade:
 
         # Calculate unrealized P&L
         if self.direction == 1:  # Long position
-            self.unrealized_pnl = (
-                current_price - self.entry_price) / self.entry_price
+            self.unrealized_pnl = (current_price - self.entry_price) / self.entry_price
 
             # Update max favorable/adverse excursion
             self.max_favorable_excursion = max(
-                self.max_favorable_excursion, self.unrealized_pnl)
+                self.max_favorable_excursion, self.unrealized_pnl
+            )
             self.max_adverse_excursion = min(
-                self.max_adverse_excursion, self.unrealized_pnl)
+                self.max_adverse_excursion, self.unrealized_pnl
+            )
 
             # Check trailing stop activation
-            if (self.trailing_stop and not self.trailing_stop_activated and
-                    self.unrealized_pnl >= self.trailing_stop_activation):
+            if (
+                self.trailing_stop
+                and not self.trailing_stop_activated
+                and self.unrealized_pnl >= self.trailing_stop_activation
+            ):
                 self.trailing_stop_activated = True
-                self.trailing_stop_price = current_price * \
-                    (1 - self.trailing_stop_distance)
+                self.trailing_stop_price = current_price * (
+                    1 - self.trailing_stop_distance
+                )
                 logger.info(
-                    f"Trailing stop activated for trade {self.id} at {self.trailing_stop_price}")
+                    f"Trailing stop activated for trade {self.id} at {self.trailing_stop_price}"
+                )
 
             # Update trailing stop if activated
             if self.trailing_stop and self.trailing_stop_activated:
@@ -149,10 +154,12 @@ class Trade:
                 return True
 
             # Check trailing stop
-            if (self.trailing_stop and self.trailing_stop_activated and
-                    current_price <= self.trailing_stop_price):
-                self.close(timestamp, self.trailing_stop_price,
-                           "Trailing Stop")
+            if (
+                self.trailing_stop
+                and self.trailing_stop_activated
+                and current_price <= self.trailing_stop_price
+            ):
+                self.close(timestamp, self.trailing_stop_price, "Trailing Stop")
                 return True
 
             # Check take profit
@@ -161,23 +168,29 @@ class Trade:
                 return True
 
         elif self.direction == -1:  # Short position
-            self.unrealized_pnl = (
-                self.entry_price - current_price) / self.entry_price
+            self.unrealized_pnl = (self.entry_price - current_price) / self.entry_price
 
             # Update max favorable/adverse excursion
             self.max_favorable_excursion = max(
-                self.max_favorable_excursion, self.unrealized_pnl)
+                self.max_favorable_excursion, self.unrealized_pnl
+            )
             self.max_adverse_excursion = min(
-                self.max_adverse_excursion, self.unrealized_pnl)
+                self.max_adverse_excursion, self.unrealized_pnl
+            )
 
             # Check trailing stop activation
-            if (self.trailing_stop and not self.trailing_stop_activated and
-                    self.unrealized_pnl >= self.trailing_stop_activation):
+            if (
+                self.trailing_stop
+                and not self.trailing_stop_activated
+                and self.unrealized_pnl >= self.trailing_stop_activation
+            ):
                 self.trailing_stop_activated = True
-                self.trailing_stop_price = current_price * \
-                    (1 + self.trailing_stop_distance)
+                self.trailing_stop_price = current_price * (
+                    1 + self.trailing_stop_distance
+                )
                 logger.info(
-                    f"Trailing stop activated for trade {self.id} at {self.trailing_stop_price}")
+                    f"Trailing stop activated for trade {self.id} at {self.trailing_stop_price}"
+                )
 
             # Update trailing stop if activated
             if self.trailing_stop and self.trailing_stop_activated:
@@ -191,10 +204,12 @@ class Trade:
                 return True
 
             # Check trailing stop
-            if (self.trailing_stop and self.trailing_stop_activated and
-                    current_price >= self.trailing_stop_price):
-                self.close(timestamp, self.trailing_stop_price,
-                           "Trailing Stop")
+            if (
+                self.trailing_stop
+                and self.trailing_stop_activated
+                and current_price >= self.trailing_stop_price
+            ):
+                self.close(timestamp, self.trailing_stop_price, "Trailing Stop")
                 return True
 
             # Check take profit
@@ -223,20 +238,22 @@ class Trade:
 
         # Calculate realized P&L
         if self.direction == 1:  # Long position
-            self.realized_pnl = (
-                self.exit_price - self.entry_price) / self.entry_price
+            self.realized_pnl = (self.exit_price - self.entry_price) / self.entry_price
         else:  # Short position
-            self.realized_pnl = (self.entry_price -
-                                 self.exit_price) / self.entry_price
+            self.realized_pnl = (self.entry_price - self.exit_price) / self.entry_price
 
         # Calculate duration
-        if hasattr(self.exit_time, 'timestamp') and hasattr(self.entry_time, 'timestamp'):
+        if hasattr(self.exit_time, "timestamp") and hasattr(
+            self.entry_time, "timestamp"
+        ):
             self.duration = self.exit_time - self.entry_time
         else:
             self.duration = None
 
-        logger.info(f"Trade {self.id} closed: {self.symbol} {self.direction} at {self.exit_price}. "
-                    f"P&L: {self.realized_pnl:.2%}, Reason: {self.exit_reason}")
+        logger.info(
+            f"Trade {self.id} closed: {self.symbol} {self.direction} at {self.exit_price}. "
+            f"P&L: {self.realized_pnl:.2%}, Reason: {self.exit_reason}"
+        )
 
     def to_dict(self) -> Dict:
         """
@@ -246,22 +263,22 @@ class Trade:
             Dictionary with trade information
         """
         return {
-            'id': self.id,
-            'symbol': self.symbol,
-            'direction': self.direction,
-            'entry_time': self.entry_time,
-            'entry_price': self.entry_price,
-            'size': self.size,
-            'stop_loss': self.stop_loss,
-            'take_profit': self.take_profit,
-            'exit_time': self.exit_time,
-            'exit_price': self.exit_price,
-            'exit_reason': self.exit_reason,
-            'realized_pnl': self.realized_pnl,
-            'max_favorable_excursion': self.max_favorable_excursion,
-            'max_adverse_excursion': self.max_adverse_excursion,
-            'duration': self.duration,
-            'tags': ','.join(self.tags) if self.tags else '',
+            "id": self.id,
+            "symbol": self.symbol,
+            "direction": self.direction,
+            "entry_time": self.entry_time,
+            "entry_price": self.entry_price,
+            "size": self.size,
+            "stop_loss": self.stop_loss,
+            "take_profit": self.take_profit,
+            "exit_time": self.exit_time,
+            "exit_price": self.exit_price,
+            "exit_reason": self.exit_reason,
+            "realized_pnl": self.realized_pnl,
+            "max_favorable_excursion": self.max_favorable_excursion,
+            "max_adverse_excursion": self.max_adverse_excursion,
+            "duration": self.duration,
+            "tags": ",".join(self.tags) if self.tags else "",
         }
 
 
@@ -282,7 +299,7 @@ class TradeManager:
         trailing_stop_enabled: bool = True,
         trailing_stop_activation: float = 0.01,
         trailing_stop_distance: float = 0.005,
-        pyramiding_allowed: bool = False
+        pyramiding_allowed: bool = False,
     ):
         """
         Initialize the trade manager.
@@ -316,7 +333,7 @@ class TradeManager:
         # State tracking
         self.active_trades = {}  # id -> Trade
         self.closed_trades = []  # List of closed Trade objects
-        self.positions = {}      # symbol -> size
+        self.positions = {}  # symbol -> size
         self.equity_curve = [initial_capital]
         self.equity_timestamps = []
         self.current_drawdown = 0.0
@@ -347,7 +364,7 @@ class TradeManager:
         symbol: str,
         signal_strength: float,
         volatility: float,
-        current_price: float
+        current_price: float,
     ) -> float:
         """
         Calculate appropriate position size.
@@ -364,18 +381,21 @@ class TradeManager:
         # Check circuit breakers
         if len(self.active_trades) >= self.max_open_trades:
             logger.info(
-                f"Maximum number of open trades ({self.max_open_trades}) reached.")
+                f"Maximum number of open trades ({self.max_open_trades}) reached."
+            )
             return 0.0
 
         if self.current_drawdown >= self.max_drawdown_pct:
             logger.info(
-                f"Maximum drawdown ({self.max_drawdown_pct:.2%}) reached. No new positions.")
+                f"Maximum drawdown ({self.max_drawdown_pct:.2%}) reached. No new positions."
+            )
             return 0.0
 
         # Check if position already exists and pyramiding is disabled
         if symbol in self.positions and not self.pyramiding_allowed:
             logger.info(
-                f"Position already exists for {symbol} and pyramiding is disabled.")
+                f"Position already exists for {symbol} and pyramiding is disabled."
+            )
             return 0.0
 
         # Check correlation limits
@@ -383,11 +403,13 @@ class TradeManager:
             # Count current active correlated trades
             correlated_symbols = self.correlated_assets[symbol]
             active_correlated = sum(
-                1 for s in correlated_symbols if s in self.positions)
+                1 for s in correlated_symbols if s in self.positions
+            )
 
             if active_correlated >= self.max_correlated_trades:
                 logger.info(
-                    f"Maximum correlated trades ({self.max_correlated_trades}) reached for {symbol}.")
+                    f"Maximum correlated trades ({self.max_correlated_trades}) reached for {symbol}."
+                )
                 return 0.0
 
         # Calculate position size as capital fraction
@@ -399,7 +421,7 @@ class TradeManager:
             max_capital_per_trade=self.max_capital_per_trade,
             use_kelly=self.use_kelly_sizing,
             win_rate=self.running_win_rate,
-            payoff_ratio=self.running_payoff_ratio
+            payoff_ratio=self.running_payoff_ratio,
         )
 
         # Calculate number of units
@@ -418,7 +440,7 @@ class TradeManager:
         take_profit: float,
         signal_strength: float = 0.6,
         volatility: float = 0.01,
-        tags: Optional[List[str]] = None
+        tags: Optional[List[str]] = None,
     ) -> Optional[str]:
         """
         Enter a new position or add to existing position.
@@ -439,16 +461,17 @@ class TradeManager:
         """
         if direction not in [1, -1]:
             logger.warning(
-                f"Invalid direction: {direction}. Must be 1 (long) or -1 (short).")
+                f"Invalid direction: {direction}. Must be 1 (long) or -1 (short)."
+            )
             return None
 
         # Calculate position size
         size = self.calculate_position_size(
-            symbol, signal_strength, volatility, entry_price)
+            symbol, signal_strength, volatility, entry_price
+        )
 
         if size <= 0:
-            logger.info(
-                f"Position size calculation returned {size}. No trade entered.")
+            logger.info(f"Position size calculation returned {size}. No trade entered.")
             return None
 
         # Create trade ID
@@ -467,7 +490,7 @@ class TradeManager:
             trailing_stop=self.trailing_stop_enabled,
             trailing_stop_distance=self.trailing_stop_distance,
             trailing_stop_activation=self.trailing_stop_activation,
-            tags=tags
+            tags=tags,
         )
 
         # Add to active trades
@@ -482,7 +505,8 @@ class TradeManager:
             self.positions[symbol] = size * direction
 
         logger.info(
-            f"Entered {direction} position in {symbol} at {entry_price}. Size: {size}, Trade ID: {trade_id}")
+            f"Entered {direction} position in {symbol} at {entry_price}. Size: {size}, Trade ID: {trade_id}"
+        )
         return trade_id
 
     def update(self, timestamp: Any, prices: Dict[str, float]) -> List[str]:
@@ -533,7 +557,8 @@ class TradeManager:
                     self._update_performance_metrics()
             else:
                 logger.warning(
-                    f"No price data for {symbol}. Cannot update trade {trade_id}.")
+                    f"No price data for {symbol}. Cannot update trade {trade_id}."
+                )
 
         # Update equity curve
         self.equity_timestamps.append(timestamp)
@@ -546,7 +571,9 @@ class TradeManager:
 
         return closed_trades
 
-    def close_trade(self, trade_id: str, timestamp: Any, price: float, reason: str) -> bool:
+    def close_trade(
+        self, trade_id: str, timestamp: Any, price: float, reason: str
+    ) -> bool:
         """
         Manually close a trade.
 
@@ -597,7 +624,9 @@ class TradeManager:
 
         return True
 
-    def close_all_positions(self, timestamp: Any, prices: Dict[str, float], reason: str) -> List[str]:
+    def close_all_positions(
+        self, timestamp: Any, prices: Dict[str, float], reason: str
+    ) -> List[str]:
         """
         Close all active positions.
 
@@ -620,7 +649,8 @@ class TradeManager:
                 closed_trades.append(trade_id)
             else:
                 logger.warning(
-                    f"No price data for {symbol}. Cannot close trade {trade_id}.")
+                    f"No price data for {symbol}. Cannot close trade {trade_id}."
+                )
 
         return closed_trades
 
@@ -637,16 +667,16 @@ class TradeManager:
         self.running_win_rate = wins / len(recent_trades)
 
         # Calculate payoff ratio
-        winning_trades = [
-            trade for trade in recent_trades if trade.realized_pnl > 0]
-        losing_trades = [
-            trade for trade in recent_trades if trade.realized_pnl < 0]
+        winning_trades = [trade for trade in recent_trades if trade.realized_pnl > 0]
+        losing_trades = [trade for trade in recent_trades if trade.realized_pnl < 0]
 
         if winning_trades and losing_trades:
-            avg_win = sum(
-                trade.realized_pnl for trade in winning_trades) / len(winning_trades)
-            avg_loss = sum(abs(trade.realized_pnl)
-                           for trade in losing_trades) / len(losing_trades)
+            avg_win = sum(trade.realized_pnl for trade in winning_trades) / len(
+                winning_trades
+            )
+            avg_loss = sum(abs(trade.realized_pnl) for trade in losing_trades) / len(
+                losing_trades
+            )
 
             if avg_loss > 0:
                 self.running_payoff_ratio = avg_win / avg_loss
@@ -693,15 +723,14 @@ class TradeManager:
         """
         if not self.closed_trades:
             return {
-                'total_return': 0.0,
-                'win_rate': 0.0,
-                'profit_factor': 0.0,
-                'max_drawdown': 0.0
+                "total_return": 0.0,
+                "win_rate": 0.0,
+                "profit_factor": 0.0,
+                "max_drawdown": 0.0,
             }
 
         # Calculate returns from equity curve
-        equity_series = pd.Series(
-            self.equity_curve, index=self.equity_timestamps)
+        equity_series = pd.Series(self.equity_curve, index=self.equity_timestamps)
         returns = equity_series.pct_change().fillna(0)
 
         # Calculate metrics
@@ -710,46 +739,63 @@ class TradeManager:
         # Add trade-specific metrics
         trades_df = self.get_trade_summary()
 
-        metrics['total_trades'] = len(trades_df)
-        metrics['winning_trades'] = sum(trades_df['realized_pnl'] > 0)
-        metrics['losing_trades'] = sum(trades_df['realized_pnl'] < 0)
-        metrics['breakeven_trades'] = sum(trades_df['realized_pnl'] == 0)
+        metrics["total_trades"] = len(trades_df)
+        metrics["winning_trades"] = sum(trades_df["realized_pnl"] > 0)
+        metrics["losing_trades"] = sum(trades_df["realized_pnl"] < 0)
+        metrics["breakeven_trades"] = sum(trades_df["realized_pnl"] == 0)
 
-        metrics['win_rate'] = metrics['winning_trades'] / \
-            metrics['total_trades'] if metrics['total_trades'] > 0 else 0
+        metrics["win_rate"] = (
+            metrics["winning_trades"] / metrics["total_trades"]
+            if metrics["total_trades"] > 0
+            else 0
+        )
 
         # Average trade metrics
-        metrics['avg_trade_return'] = trades_df['realized_pnl'].mean(
-        ) if not trades_df.empty else 0
-        metrics['avg_winner'] = trades_df.loc[trades_df['realized_pnl'] > 0,
-                                              'realized_pnl'].mean() if any(trades_df['realized_pnl'] > 0) else 0
-        metrics['avg_loser'] = trades_df.loc[trades_df['realized_pnl'] < 0,
-                                             'realized_pnl'].mean() if any(trades_df['realized_pnl'] < 0) else 0
+        metrics["avg_trade_return"] = (
+            trades_df["realized_pnl"].mean() if not trades_df.empty else 0
+        )
+        metrics["avg_winner"] = (
+            trades_df.loc[trades_df["realized_pnl"] > 0, "realized_pnl"].mean()
+            if any(trades_df["realized_pnl"] > 0)
+            else 0
+        )
+        metrics["avg_loser"] = (
+            trades_df.loc[trades_df["realized_pnl"] < 0, "realized_pnl"].mean()
+            if any(trades_df["realized_pnl"] < 0)
+            else 0
+        )
 
         # Profit factor
-        gross_profit = trades_df.loc[trades_df['realized_pnl'] > 0, 'realized_pnl'].sum(
-        ) if any(trades_df['realized_pnl'] > 0) else 0
-        gross_loss = abs(trades_df.loc[trades_df['realized_pnl'] < 0, 'realized_pnl'].sum(
-        )) if any(trades_df['realized_pnl'] < 0) else 0
+        gross_profit = (
+            trades_df.loc[trades_df["realized_pnl"] > 0, "realized_pnl"].sum()
+            if any(trades_df["realized_pnl"] > 0)
+            else 0
+        )
+        gross_loss = (
+            abs(trades_df.loc[trades_df["realized_pnl"] < 0, "realized_pnl"].sum())
+            if any(trades_df["realized_pnl"] < 0)
+            else 0
+        )
 
-        metrics['gross_profit'] = gross_profit
-        metrics['gross_loss'] = gross_loss
-        metrics['profit_factor'] = gross_profit / \
-            gross_loss if gross_loss > 0 else float('inf')
+        metrics["gross_profit"] = gross_profit
+        metrics["gross_loss"] = gross_loss
+        metrics["profit_factor"] = (
+            gross_profit / gross_loss if gross_loss > 0 else float("inf")
+        )
 
         # Duration statistics
-        if 'duration' in trades_df.columns and trades_df['duration'].notna().any():
+        if "duration" in trades_df.columns and trades_df["duration"].notna().any():
             # Convert to timedeltas if not already
-            if not isinstance(trades_df['duration'].iloc[0], timedelta):
-                trades_df['duration'] = pd.to_timedelta(trades_df['duration'])
+            if not isinstance(trades_df["duration"].iloc[0], timedelta):
+                trades_df["duration"] = pd.to_timedelta(trades_df["duration"])
 
             # Calculate statistics
-            metrics['avg_trade_duration'] = trades_df['duration'].mean()
-            metrics['min_trade_duration'] = trades_df['duration'].min()
-            metrics['max_trade_duration'] = trades_df['duration'].max()
+            metrics["avg_trade_duration"] = trades_df["duration"].mean()
+            metrics["min_trade_duration"] = trades_df["duration"].min()
+            metrics["max_trade_duration"] = trades_df["duration"].max()
 
         # Exit reasons
-        exit_reasons = trades_df['exit_reason'].value_counts().to_dict()
+        exit_reasons = trades_df["exit_reason"].value_counts().to_dict()
         for reason, count in exit_reasons.items():
             metrics[f'exit_{reason.lower().replace(" ", "_")}'] = count
 
@@ -758,7 +804,7 @@ class TradeManager:
     def generate_report(
         self,
         output_dir: Optional[str] = None,
-        benchmark_equity: Optional[pd.Series] = None
+        benchmark_equity: Optional[pd.Series] = None,
     ) -> Dict[str, Any]:
         """
         Generate comprehensive performance report.
@@ -778,8 +824,7 @@ class TradeManager:
         metrics = self.get_performance_metrics()
 
         # Convert equity curve to Series
-        equity_series = pd.Series(
-            self.equity_curve, index=self.equity_timestamps)
+        equity_series = pd.Series(self.equity_curve, index=self.equity_timestamps)
         returns = equity_series.pct_change().fillna(0)
 
         # Print performance summary
@@ -789,28 +834,30 @@ class TradeManager:
         if output_dir:
             try:
                 from ..utils.visualization import (
-                    plot_equity_curve, plot_drawdowns, plot_monthly_returns
+                    plot_drawdowns,
+                    plot_equity_curve,
+                    plot_monthly_returns,
                 )
-                
+
                 # Equity curve
                 plot_equity_curve(
                     equity_curve=equity_series,
                     benchmark_curve=benchmark_equity,
                     title=f"Equity Curve - Return: {(self.capital / self.initial_capital - 1):.2%}",
-                    filename=os.path.join(output_dir, 'equity_curve.png')
+                    filename=os.path.join(output_dir, "equity_curve.png"),
                 )
 
                 # Drawdowns
                 plot_drawdowns(
                     returns=returns,
                     top_n=5,
-                    filename=os.path.join(output_dir, 'drawdowns.png')
+                    filename=os.path.join(output_dir, "drawdowns.png"),
                 )
 
                 # Monthly returns heatmap
                 plot_monthly_returns(
                     returns=returns,
-                    filename=os.path.join(output_dir, 'monthly_returns.png')
+                    filename=os.path.join(output_dir, "monthly_returns.png"),
                 )
             except ImportError:
                 logger.warning("Visualization modules not available for plotting")
@@ -818,22 +865,24 @@ class TradeManager:
         # Save trade summary
         if output_dir:
             trades_df = self.get_trade_summary()
-            trades_df.to_csv(os.path.join(
-                output_dir, 'trades.csv'), index=False)
+            trades_df.to_csv(os.path.join(output_dir, "trades.csv"), index=False)
 
             # Save performance metrics
-            pd.Series(metrics).to_csv(os.path.join(
-                output_dir, 'performance_metrics.csv'))
+            pd.Series(metrics).to_csv(
+                os.path.join(output_dir, "performance_metrics.csv")
+            )
 
             # Save equity curve
-            equity_series.to_csv(os.path.join(output_dir, 'equity_curve.csv'))
+            equity_series.to_csv(os.path.join(output_dir, "equity_curve.csv"))
 
         return {
-            'metrics': metrics,
-            'equity_curve': equity_series,
-            'trades': self.get_trade_summary() if self.closed_trades else pd.DataFrame()
+            "metrics": metrics,
+            "equity_curve": equity_series,
+            "trades": (
+                self.get_trade_summary() if self.closed_trades else pd.DataFrame()
+            ),
         }
-    
+
     def _print_performance_summary(self, metrics: Dict[str, Any]) -> None:
         """
         Print a formatted performance summary.
@@ -841,9 +890,9 @@ class TradeManager:
         Args:
             metrics: Dictionary of performance metrics
         """
-        print("\n" + "="*50)
-        print(" "*15 + "PERFORMANCE SUMMARY")
-        print("="*50)
+        print("\n" + "=" * 50)
+        print(" " * 15 + "PERFORMANCE SUMMARY")
+        print("=" * 50)
 
         # Returns
         print("\n-- RETURNS --")
@@ -874,14 +923,13 @@ class TradeManager:
         print(f"Avg. Win: {metrics.get('avg_win', 0):.2%}")
         print(f"Avg. Loss: {metrics.get('avg_loss', 0):.2%}")
         print(f"Max Consecutive Wins: {metrics.get('max_consecutive_wins', 0)}")
-        print(
-            f"Max Consecutive Losses: {metrics.get('max_consecutive_losses', 0)}")
+        print(f"Max Consecutive Losses: {metrics.get('max_consecutive_losses', 0)}")
 
         # Benchmark Comparison (if available)
-        if 'alpha' in metrics and 'beta' in metrics:
+        if "alpha" in metrics and "beta" in metrics:
             print("\n-- BENCHMARK COMPARISON --")
             print(f"Alpha (Ann.): {metrics.get('alpha', 0):.2%}")
             print(f"Beta: {metrics.get('beta', 0):.2f}")
             print(f"Information Ratio: {metrics.get('information_ratio', 0):.2f}")
 
-        print("\n" + "="*50)
+        print("\n" + "=" * 50)
