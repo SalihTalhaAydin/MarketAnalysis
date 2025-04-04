@@ -286,7 +286,8 @@ def handle_outliers(
 
                 # Ensure column can handle float thresholds if necessary
                 if pd.api.types.is_integer_dtype(result[col].dtype) and (
-                    isinstance(lower_threshold, float) or isinstance(upper_threshold, float)
+                    isinstance(lower_threshold, float)
+                    or isinstance(upper_threshold, float)
                 ):
                     result[col] = result[col].astype(float)
 
