@@ -233,7 +233,9 @@ def engineer_features(
                 logger.debug(f"Filled NaNs in numeric column '{col}' with {fill_value}")
             else:
                 # For categorical/other columns, fill with 0 (or mode if appropriate)
-                processed_df[col] = processed_df[col].fillna(0)  # Using 0 as a simple default
+                processed_df[col] = processed_df[col].fillna(
+                    0
+                )  # Using 0 as a simple default
                 logger.debug(f"Filled NaNs in non-numeric column '{col}' with 0")
 
     return processed_df

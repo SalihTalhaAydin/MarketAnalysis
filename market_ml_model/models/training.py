@@ -77,7 +77,9 @@ def create_feature_pipeline(
         numeric_features = []
 
         for col in X.columns:
-            if X[col].dtype == "object" or isinstance(X[col].dtype, pd.CategoricalDtype):
+            if X[col].dtype == "object" or isinstance(
+                X[col].dtype, pd.CategoricalDtype
+            ):
                 categorical_features.append(col)
             elif pd.api.types.is_numeric_dtype(X[col]):
                 numeric_features.append(col)
