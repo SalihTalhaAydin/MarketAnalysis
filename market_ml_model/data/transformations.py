@@ -333,3 +333,82 @@ def handle_outliers(
         logger.error(f"Unsupported outlier handling method: {method}")
 
     return result
+
+
+def preprocess_data(df: pd.DataFrame, ticker: str) -> pd.DataFrame | None:
+    """
+    Performs initial data cleaning and standardization.
+
+    Args:
+        df: Raw OHLCV DataFrame (potentially MultiIndex from yfinance).
+        ticker: The ticker symbol for which data is being processed.
+
+    Returns:
+        DataFrame with standardized columns and basic cleaning,
+        or None if fails.
+    """
+    logger.info("--- Initial Data Preprocessing ---") # Use logger
+    if df is None or df.empty:
+        logger.error("Input DataFrame is empty/None for preprocessing.") # Use logger
+        return None
+
+    processed_df = df.copy()
+
+    # --- Standardize Column Names (lowercase) ---
+    # Handle potential MultiIndex from yfinance if multiple tickers were loaded
+    if isinstance(processed_df.columns, pd.MultiIndex):
+        logger.info(f"Extracting data for '{ticker}' from MultiIndex...") # Use logger
+        # Check if ticker is at level 1 (standard yfinance format)
+        if ticker in processed_df.columns.get_level_values(1):
+            try:
+                idx = pd.IndexSlice
+                processed_df = processed_df.loc[:, idx[:, ticker]].copy()
+                processed_df.columns = processed_df.columns.droplevel(1)
+                processed_df.columns = processed_df.columns.str.lower()
+                logger.info(f"Extracted {ticker} data from column level 1.") # Use logger
+            except Exception as e:
+                logger.error(f"Error extracting ticker {ticker} from level 1: {e}") # Use logger
+                return None
+        # Check if ticker is at level 0 (current test fixture format)
+        elif ticker in processed_df.columns.get_level_values(0):
+            try:
+                processed_df = processed_df.xs(ticker, level=0, axis=1).copy()
+                processed_df.columns = processed_df.columns.str.lower()
+                logger.info(f"Extracted {ticker} data from column level 0.") # Use logger
+            except KeyError:
+                logger.error(f"Ticker {ticker} in level 0 but xs failed.") # Use logger
+                return None
+            except Exception as e:
+                logger.error(f"Error extracting ticker {ticker} from level 0: {e}") # Use logger
+                return None
+        else:
+            logger.error(f"Ticker {ticker} not found in MultiIndex " # Use logger
+                         f"columns (levels 0 or 1). Available: {processed_df.columns}")
+            return None
+    else:
+        # Assume single index columns, convert to lowercase
+        processed_df.columns = processed_df.columns.str.lower()
+
+    # --- Basic Preprocessing Steps ---
+    # 1. Handle missing values (example: forward fill)
+    initial_nan_count = processed_df.isnull().sum().sum()
+    processed_df.ffill(inplace=True)
+    # Handle any remaining NaNs at the beginning (e.g., drop rows)
+    processed_df.dropna(inplace=True)
+    final_nan_count = processed_df.isnull().sum().sum()
+    if initial_nan_count > 0:
+        logger.info(f"Handled NaNs (Initial: {initial_nan_count}, " # Use logger
+                    f"Final: {final_nan_count})")
+
+    # 2. Ensure correct data types (e.g., numeric for OHLCV)
+    for col in ['open', 'high', 'low', 'close', 'volume']:
+        if col in processed_df.columns:
+            processed_df[col] = pd.to_numeric(
+                processed_df[col], errors='coerce'
+            )
+        else:
+            logger.warning(f"Column '{col}' not found for type conversion.") # Use logger
+    processed_df.dropna(inplace=True)  # Drop rows if coercion failed
+
+    logger.info(f"Initial preprocessing complete. Shape: {processed_df.shape}") # Use logger
+    return processed_df

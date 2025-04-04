@@ -54,7 +54,10 @@ except ImportError:
 try:
     import tensorflow as tf
     from tensorflow.keras.models import Sequential, Model
-    from tensorflow.keras.layers import Dense, Dropout
+    from tensorflow.keras.layers import ( # Updated import block
+        Dense, Dropout, LSTM, GRU, Bidirectional,
+        BatchNormalization, Input, Concatenate
+    )
     from tensorflow.keras.optimizers import Adam
     TENSORFLOW_AVAILABLE = True
 except ImportError:
@@ -349,6 +352,92 @@ def create_neural_network(params: Optional[Dict] = None) -> Any:
     return model
 
 
+@register_model_factory('lstm')
+def create_lstm_network(params: Optional[Dict] = None) -> Any:
+    """
+    Create an LSTM network for sequence classification.
+
+    Args:
+        params: Model parameters
+
+    Returns:
+        Keras Sequential model
+    """
+    if not TENSORFLOW_AVAILABLE:
+        logger.error("TensorFlow not available for LSTM")
+        return None
+
+    params = params or {}
+
+    # Set defaults
+    default_params = {
+        'input_shape': (10, 1),  # (sequence_length, features)
+        'num_classes': 3,
+        'lstm_units': [64, 32],
+        'dropout_rate': 0.2,
+        'recurrent_dropout': 0.2,
+        'dense_units': [32],
+        'learning_rate': 0.001,
+        'activation': 'relu',
+        'output_activation': 'softmax'
+    }
+
+    # Update with provided params
+    default_params.update(params)
+
+    # Build model
+    model = Sequential()
+
+    # First LSTM layer
+    if len(default_params['lstm_units']) == 1:
+        # Only one LSTM layer - return sequences False
+        model.add(LSTM(
+            units=default_params['lstm_units'][0],
+            input_shape=default_params['input_shape'],
+            dropout=default_params['dropout_rate'],
+            recurrent_dropout=default_params['recurrent_dropout']
+        ))
+    else:
+        # Multiple LSTM layers - return sequences True
+        model.add(LSTM(
+            units=default_params['lstm_units'][0],
+            input_shape=default_params['input_shape'],
+            dropout=default_params['dropout_rate'],
+            recurrent_dropout=default_params['recurrent_dropout'],
+            return_sequences=True
+        ))
+
+    # Additional LSTM layers
+    for i, units in enumerate(default_params['lstm_units'][1:]):
+        return_sequences = i < len(default_params['lstm_units']) - 2
+        model.add(LSTM(
+            units=units,
+            dropout=default_params['dropout_rate'],
+            recurrent_dropout=default_params['recurrent_dropout'],
+            return_sequences=return_sequences
+        ))
+
+    # Dense layers
+    for units in default_params['dense_units']:
+        model.add(Dense(units, activation=default_params['activation']))
+        model.add(Dropout(default_params['dropout_rate']))
+
+    # Output layer
+    model.add(Dense(
+        default_params['num_classes'],
+        activation=default_params['output_activation']
+    ))
+
+    # Compile model
+    model.compile(
+        optimizer=Adam(learning_rate=default_params['learning_rate']),
+        loss='categorical_crossentropy',
+        metrics=['accuracy']
+    )
+
+    return model
+
+
 @register_model_factory('ensemble')
 def create_ensemble(params: Optional[Dict] = None) -> Any:
     """
@@ -380,7 +469,9 @@ def create_ensemble(params: Optional[Dict] = None) -> Any:
     estimators = []
     for model_type in default_params['models']:
         if model_type in MODEL_FACTORY:
-            model = MODEL_FACTORY[model_type]()
+            # Pass specific params if provided for sub-models, else use defaults
+            model_params = params.get(model_type, {})
+            model = MODEL_FACTORY[model_type](model_params)
             if model is not None:
                 estimators.append((model_type, model))
         else:
