@@ -99,6 +99,29 @@ python market_ml_model/strategy/main.py --config path/to/strategy_config.yaml
 *   **Concept:** Orchestrates the end-to-end process: data loading, feature generation, model training/prediction, and backtesting. Often implements validation techniques like Walk-Forward Validation.
 *   **Implementation:** `main.py` serves as the central script for orchestrating the strategy.
 
+## Testing
+
+This project uses `pytest` for unit testing.
+
+1.  **Install development dependencies:**
+    Ensure you have installed the package in editable mode with the `dev` extras:
+    ```bash
+    pip install -e .[dev]
+    ```
+
+2.  **Run tests:**
+    Navigate to the project root directory (where `setup.py` is located) and run:
+    ```bash
+    pytest
+    ```
+
+3.  **Run tests with coverage:**
+    To generate a coverage report:
+    ```bash
+    pytest --cov=market_ml_model tests/
+    ```
+    *(This requires `pytest-cov`, which is included in the `dev` dependencies).*
+
 ## Contributing
 
 Contributions are welcome! Please follow standard practices:

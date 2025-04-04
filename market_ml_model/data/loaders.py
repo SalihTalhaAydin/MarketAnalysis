@@ -14,13 +14,13 @@ import json
 # Import data source modules
 from .sources.yahoo import load_from_yahoo
 from .sources.alpha_vantage import load_from_alpha_vantage
-from .sources.csv import load_from_csv
+from .sources.csv_loader import load_from_csv
 from .sources.crypto import load_from_crypto
 from .sources.datareader import load_from_datareader
 from .sources.data_source import DataSource
 
 # Import cache module
-from .cache.cache import DataCache
+# from .cache.cache import DataCache # Commented out due to missing module/file
 
 # Import transformations
 from .transformations import resample_data, align_data, detect_outliers, handle_outliers
