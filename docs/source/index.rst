@@ -7,7 +7,7 @@ Welcome to the MarketAnalysis Framework Documentation!
 ======================================================
 
 This framework provides tools for developing, training, and backtesting automated trading strategies based on machine learning.
-For a quick overview and installation instructions, please see the main `README.md <../../README.md>`_ file.
+For a quick overview and installation instructions, please see the main `README.md <../../README.md>`__ file.
 
 .. toctree::
    :maxdepth: 2
