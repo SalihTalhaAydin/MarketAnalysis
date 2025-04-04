@@ -6,10 +6,9 @@ import json
 import logging
 import os
 import time
-from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Tuple, Union
+from datetime import datetime
+from typing import Any, Dict, List, Optional
 
-import numpy as np
 import pandas as pd
 
 # Import cache module
@@ -24,7 +23,7 @@ from .sources.datareader import load_from_datareader
 from .sources.yahoo import load_from_yahoo
 
 # Import transformations
-from .transformations import align_data, detect_outliers, handle_outliers, resample_data
+from .transformations import detect_outliers, handle_outliers
 
 # Setup logging
 logger = logging.getLogger(__name__)

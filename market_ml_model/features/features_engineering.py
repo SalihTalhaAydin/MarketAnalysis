@@ -3,7 +3,7 @@ Main feature engineering orchestration module.
 """
 
 import logging
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -199,7 +199,6 @@ def engineer_features(
     # --- Clean up and finalize ---
 
     # Sanitize column names
-    original_cols = processed_df.columns
     processed_df.columns = (
         processed_df.columns.str.replace(r"[\s\(\)\%\.]+", "_", regex=True)
         .str.replace(r"_+", "_", regex=True)  # Consolidate underscores

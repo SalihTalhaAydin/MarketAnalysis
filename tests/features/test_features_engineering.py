@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
@@ -103,7 +103,9 @@ def test_engineer_features_basic(
     # This test doesn't use the mocks, but they are injected by pytest
     # Disable TA and labels for this test
     result_df = engineer_features(
-        sample_ohlcv_df, additional_features=[], target_type=None  # No TA  # No labels
+        sample_ohlcv_df,
+        additional_features=[],
+        target_type=None,  # No TA  # No labels
     )
 
     assert "return" in result_df.columns

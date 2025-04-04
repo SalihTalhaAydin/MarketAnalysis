@@ -5,7 +5,6 @@ Hyperparameter optimization methods for models.
 import logging
 from typing import Any, Dict, Optional, Tuple
 
-import numpy as np
 import pandas as pd
 
 # Import model factory

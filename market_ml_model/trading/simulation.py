@@ -4,11 +4,9 @@ Trade simulation system for backtesting strategies.
 
 import logging
 import os
-import time
-from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Tuple, Union
+from datetime import timedelta
+from typing import Any, Dict, List, Optional
 
-import numpy as np
 import pandas as pd
 
 # Import utils

@@ -19,13 +19,11 @@ MODEL_FACTORY = {}
 # Import scikit-learn models with error handling
 try:
     from sklearn.ensemble import (
-        AdaBoostClassifier,
-        ExtraTreesClassifier,
         GradientBoostingClassifier,
         RandomForestClassifier,
         VotingClassifier,
     )
-    from sklearn.linear_model import LogisticRegression, SGDClassifier
+    from sklearn.linear_model import LogisticRegression
 
     SKLEARN_AVAILABLE = True
 except ImportError:
@@ -50,7 +48,7 @@ except ImportError:
     LIGHTGBM_AVAILABLE = False
 
 try:
-    from catboost import CatBoostClassifier, Pool
+    from catboost import CatBoostClassifier
 
     CATBOOST_AVAILABLE = True
 except ImportError:
@@ -59,18 +57,12 @@ except ImportError:
 
 # Try to import TensorFlow/Keras
 try:
-    import tensorflow as tf
     from tensorflow.keras.layers import LSTM  # Updated import block
     from tensorflow.keras.layers import (
-        GRU,
-        BatchNormalization,
-        Bidirectional,
-        Concatenate,
         Dense,
         Dropout,
-        Input,
     )
-    from tensorflow.keras.models import Model, Sequential
+    from tensorflow.keras.models import Sequential
     from tensorflow.keras.optimizers import Adam
 
     TENSORFLOW_AVAILABLE = True

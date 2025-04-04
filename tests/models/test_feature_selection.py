@@ -9,7 +9,6 @@ from sklearn.decomposition import PCA
 # Import sklearn components for mocking specs
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.feature_selection import RFE, SelectFromModel, SelectKBest
-from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
 
 # Import the function to test

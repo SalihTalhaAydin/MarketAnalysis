@@ -5,23 +5,23 @@ Model training orchestration module.
 import json
 import logging
 import os
-import time
 import uuid
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple
 
-import joblib
-import numpy as np
-import pandas as pd
+import joblib  # Moved up
+import pandas as pd  # Moved up
 
-from .evaluation.metrics import compute_feature_importance, evaluate_classifier
+from .evaluation.metrics import (
+    compute_feature_importance,
+    evaluate_classifier,
+)  # Moved up
+from .factory.model_factory import create_model  # Moved up
+from .feature_selection import select_features  # Moved up
+from .optimization.hyperparameters import optimize_hyperparameters  # Moved up
 
-# Import components
-from .factory.model_factory import create_model
-
-# Import feature selection
-from .feature_selection import select_features
-from .optimization.hyperparameters import optimize_hyperparameters
+# Setup logging
+logger = logging.getLogger(__name__)
 
 # Import scikit-learn components for preprocessing and splitting
 try:
@@ -179,7 +179,8 @@ def create_feature_pipeline(
 
     # Create column transformer
     preprocessor = ColumnTransformer(
-        transformers=transformers, remainder="passthrough"  # Keep other columns if any
+        transformers=transformers,
+        remainder="passthrough",  # Keep other columns if any
     )
 
     # We cannot reliably get output feature names without fitting.
@@ -464,7 +465,10 @@ def train_classification_model(
         logger.info("Calculating feature importance...")
         # Calculate importance on processed data
         importance_df = compute_feature_importance(
-            model, X_train_processed, y_train, method="built_in"  # Try built-in first
+            model,
+            X_train_processed,
+            y_train,
+            method="built_in",  # Try built-in first
         )
         if importance_df.empty:  # Fallback to permutation
             importance_df = compute_feature_importance(

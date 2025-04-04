@@ -1,11 +1,18 @@
 import json
-import os
 from datetime import datetime
 from unittest.mock import MagicMock, call, mock_open, patch
 
 import numpy as np
 import pandas as pd
 import pytest
+
+# Import the classes and functions to test
+from market_ml_model.data.loaders import (
+    DataLoader,
+    DataLoaderConfig,
+    DataSource,
+    load_data,
+)
 
 
 # Assume DataSource is defined correctly, maybe import from .sources.data_source if needed
@@ -21,13 +28,8 @@ class MockDataSource:
 # Mock the actual data source imports if they are complex or have side effects
 # For now, assume they are simple functions that can be mocked directly later
 
-# Import the classes and functions to test
-from market_ml_model.data.loaders import (
-    DataLoader,
-    DataLoaderConfig,
-    DataSource,
-    load_data,
-)
+# Mock the transformations import as well for the standalone load_data function tests
+# from market_ml_model.data import transformations as mock_transformations # Not needed if patching directly
 
 # Mock the transformations import as well for the standalone load_data function tests
 # from market_ml_model.data import transformations as mock_transformations # Not needed if patching directly
@@ -360,7 +362,7 @@ def test_dataloader_load_data_cache_hit(mock_load_yahoo, data_loader, mock_data_
     # data_loader.cache.get_cached_data.return_value = mock_data_frame # Cannot set on None
     pytest.skip("Skipping cache hit test as cache logic is commented out in source")
 
-    data = data_loader.load_data(ticker="AAPL", data_source=DataSource.YAHOO)
+    # data = data_loader.load_data(ticker="AAPL", data_source=DataSource.YAHOO) # Removed unused variable (test skipped)
 
     # Assert that the loading function was NOT called
     mock_load_yahoo.assert_not_called()
@@ -380,7 +382,7 @@ def test_dataloader_load_data_force_reload(
 ):
     """Test DataLoader.load_data ignores cache when force_reload is True."""
     # Simulate cache having different data
-    cached_df = mock_data_frame + 1
+    # cached_df = mock_data_frame + 1 # Removed unused variable (cache logic commented out)
     # data_loader.cache.get_cached_data.return_value = cached_df # Cannot set on None
     # Since cache logic is commented out, force_reload doesn't change behaviour
     # We'll test that load_from_yahoo is still called.

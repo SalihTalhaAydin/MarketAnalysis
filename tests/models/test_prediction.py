@@ -1,16 +1,12 @@
-import json
 import os
-import sys  # Import sys
-from unittest.mock import ANY, MagicMock, call, mock_open, patch
+from unittest.mock import MagicMock, mock_open, patch
 
-import joblib
 import numpy as np
 import pandas as pd
 import pytest
 
 # Import sklearn components for mocking specs
 from sklearn.compose import ColumnTransformer
-from sklearn.exceptions import NotFittedError
 
 # Import functions and classes to test
 from market_ml_model.models.prediction import (
@@ -293,7 +289,7 @@ def test_preprocess_features_missing_input_feature(
     """Test warning when an expected selected feature is missing from input."""
     selected_features = ["feat2_selected", "feat3_selected", "MISSING"]
     with patch(f"{PREDICTION_PATH}.logger") as mock_logger:
-        features_processed = preprocess_features(
+        preprocess_features(
             sample_features, mock_preprocessor_object, selected_features
         )
         mock_logger.warning.assert_any_call(

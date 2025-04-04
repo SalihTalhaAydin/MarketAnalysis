@@ -1,7 +1,6 @@
-import json
 import os
 import sys  # Import sys for sys.modules patching
-from unittest.mock import ANY, MagicMock, call, patch
+from unittest.mock import ANY, MagicMock, patch
 
 import numpy as np
 import pandas as pd

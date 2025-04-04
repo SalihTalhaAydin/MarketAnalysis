@@ -3,8 +3,8 @@ import logging
 import os
 import time
 import warnings
-from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple, Union
+from datetime import datetime, timedelta  # Added timedelta
+from typing import Any, Dict, List, Optional, Tuple
 
 import joblib
 import numpy as np
@@ -21,8 +21,7 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 try:
     from sklearn.calibration import CalibratedClassifierCV
     from sklearn.exceptions import NotFittedError
-    from sklearn.pipeline import Pipeline
-    from sklearn.preprocessing import StandardScaler, label_binarize
+    # Removed Pipeline, StandardScaler, label_binarize
 
     SKLEARN_AVAILABLE = True
 except ImportError:
@@ -34,7 +33,7 @@ try:
     import shap
 
     # Need to handle different explainer types based on model
-    from shap import KernelExplainer, TreeExplainer
+    # Removed KernelExplainer, TreeExplainer from specific import
 
     SHAP_AVAILABLE = True
 except ImportError:
@@ -44,7 +43,7 @@ except ImportError:
 # Try importing visualization libraries
 try:
     import matplotlib.pyplot as plt
-    import seaborn as sns
+    # Removed seaborn import
 
     VISUALIZATION_AVAILABLE = True
 except ImportError:
@@ -1086,12 +1085,7 @@ def validate_model_predictions(
             return {"error": "Validation data preprocessing failed"}
 
         logger.info("Generating predictions on validation data...")
-        y_pred = model.predict(X_val_processed)
-
-        y_prob = None
-        if hasattr(model, "predict_proba"):
-            y_prob = model.predict_proba(X_val_processed)
-
+        # Predictions y_pred and y_prob are calculated within evaluate_classifier
         logger.info("Calculating validation metrics...")
         from market_ml_model.models.evaluation.metrics import (
             evaluate_classifier,
@@ -1285,16 +1279,16 @@ class SignalGenerator:
         # --- Apply Signal Generation Logic ---
         if self.signal_type == "threshold":
             signals.loc[prob_pos >= self.threshold, "raw_signal"] = 1
-            signals.loc[prob_neg >= self.threshold, "raw_signal"] = (
-                -1
-            )  # Assumes neg prob available
+            signals.loc[
+                prob_neg >= self.threshold, "raw_signal"
+            ] = -1  # Assumes neg prob available
             # Refine for binary case where only pos prob matters vs threshold
             if probabilities.shape[1] == 2:
                 signals["raw_signal"] = 0
                 signals.loc[prob_pos >= self.threshold, "raw_signal"] = 1
-                signals.loc[prob_pos <= (1 - self.threshold), "raw_signal"] = (
-                    -1
-                )  # Signal short if prob_pos is low
+                signals.loc[
+                    prob_pos <= (1 - self.threshold), "raw_signal"
+                ] = -1  # Signal short if prob_pos is low
 
         elif self.signal_type == "probability_weighted":
             # Example: Signal = 1 if prob_pos > 0.55, -1 if prob_pos < 0.45
@@ -1431,9 +1425,9 @@ class SignalGenerator:
                 if i - last_signal_idx > self.cooling_period:
                     last_signal_idx = i  # Allow signal, update last signal time
                 else:
-                    signals["signal"].iloc[
-                        i
-                    ] = 0  # Suppress signal due to cooling period
+                    signals["signal"].iloc[i] = (
+                        0  # Suppress signal due to cooling period
+                    )
         logger.info(f"Applied cooling period of {self.cooling_period} bars.")
 
     def plot_signal_history(
@@ -1639,8 +1633,7 @@ class PredictionScheduler:
             if start_date is None:
                 # Heuristic: go back enough days/hours based on interval
                 # This is complex, needs better handling based on actual feature lookbacks
-                # Defaulting to a fixed lookback for now
-                lookback_periods = 250  # Example lookback
+                # Defaulting to a fixed lookback for now (Removed unused variable)
                 # This needs the data_loader's interval knowledge
                 # start_date = (pd.to_datetime(end_date) - timedelta(days=lookback_periods)).strftime('%Y-%m-%d') # Simplistic daily lookback
                 logger.warning(

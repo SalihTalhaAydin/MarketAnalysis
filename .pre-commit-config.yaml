@@ -1,0 +1,27 @@
+# Pre-commit Configuration for MarketAnalysis
+
+# See https://pre-commit.com for more information
+# See https://docs.astral.sh/ruff/integrations/#pre-commit for ruff usage
+
+repos:
+  # Standard hooks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0 # Use a recent tag
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+
+  # Ruff for linting and formatting
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    # Ruff version. Must be aligned with the version in setup.py / requirements-dev.txt
+    rev: v0.4.10 # Use a version compatible with setup.py (>=0.1.0) - check latest if needed
+    hooks:
+      # Run the formatter.
+      - id: ruff-format
+        types_or: [ python, pyi, jupyter ]
+      # Run the linter.
+      - id: ruff
+        types_or: [ python, pyi, jupyter ]
+        args: [--fix] # Attempt to automatically fix lint issues

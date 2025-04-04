@@ -1,4 +1,3 @@
-import json
 import os
 from unittest.mock import MagicMock, mock_open, patch
 
@@ -7,8 +6,6 @@ import pandas as pd  # Add pandas import
 import pytest
 
 # Import sklearn components for mocking specs
-from sklearn.cluster import KMeans
-from sklearn.preprocessing import StandardScaler
 
 # Import config classes and detector to test
 from market_ml_model.strategy.main import (  # Import the main strategy class; Import the class to test
@@ -34,7 +31,7 @@ def mock_strategy_dependencies(mocker):
     mocker.patch(f"{STRATEGY_PATH}.load_data", MagicMock())
     mocker.patch(f"{STRATEGY_PATH}.engineer_features", MagicMock())
     mocker.patch(f"{STRATEGY_PATH}.train_classification_model", MagicMock())
-    mocker.patch(f"{STRATEGY_PATH}.create_feature_pipeline", MagicMock())
+    # mocker.patch(f"{STRATEGY_PATH}.create_feature_pipeline", MagicMock()) # Removed patch for removed import
     mocker.patch(f"{STRATEGY_PATH}.ModelPredictorBase", MagicMock())
     mocker.patch(f"{STRATEGY_PATH}.PredictionManager", MagicMock())
     mocker.patch(f"{STRATEGY_PATH}.SignalGenerator", MagicMock())
