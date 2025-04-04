@@ -149,6 +149,7 @@ def preprocess_features(
 
     try:
         features_processed = features.copy()
+        available_features = None  # Initialize here
 
         # Apply feature selection if provided
         if selected_features is not None:
@@ -179,11 +180,18 @@ def preprocess_features(
             logger.info("Applying preprocessor...")
             try:
                 # Ensure columns match the order expected by the fitted preprocessor
-                # This is crucial if selected_features were used during fit
-                if selected_features:
-                    features_processed = features_processed[selected_features]
+                # Use the list of features that were *actually* available and selected
+                if available_features:  # Use the list identified earlier
+                    features_to_transform = features_processed[available_features]
+                else:  # Should not happen if selection was done, but as fallback use current df
+                    features_to_transform = features_processed
 
-                processed_array = preprocessor.transform(features_processed)
+                # Transform the data
+                processed_array = preprocessor.transform(
+                    features_to_transform
+                )  # Pass the correctly column-selected df
+
+                # Remove original transform call
 
                 # Get feature names after transformation
                 try:
@@ -200,7 +208,7 @@ def preprocess_features(
                 # Convert back to DataFrame
                 features_processed = pd.DataFrame(
                     processed_array,
-                    index=features_processed.index,
+                    index=features_to_transform.index,  # Use index from the data passed to transform
                     columns=feature_names_out,
                 )
                 logger.info(

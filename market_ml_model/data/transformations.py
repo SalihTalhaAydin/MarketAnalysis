@@ -33,55 +33,74 @@ def resample_data(
     # Ensure data has DatetimeIndex
     if not isinstance(data.index, pd.DatetimeIndex):
         logger.warning("Data index is not DatetimeIndex. Attempting conversion.")
+        # Try converting, but operate on a copy to avoid SettingWithCopyWarning
+        data = data.copy()
         data.index = pd.to_datetime(data.index)
 
-    # Create empty result DataFrame
-    result = pd.DataFrame(index=data.index)
+    # --- Refactored Logic ---
+    # Create a new DataFrame to hold standardized OHLC data
+    ohlc_std = pd.DataFrame(index=data.index)
 
-    # Define resampling logic for each column type
-    ohlc_dict = {"open": "first", "high": "max", "low": "min", "close": "last"}
+    # Map provided ohlc_columns to standard names ('open', 'high', 'low', 'close')
+    # Use the first 4 provided column names if they exist in the input data
+    col_map = {}
+    standard_names = ["open", "high", "low", "close"]
+    for i, std_name in enumerate(standard_names):
+        if i < len(ohlc_columns) and ohlc_columns[i] in data.columns:
+            col_map[std_name] = ohlc_columns[i]
+        else:
+            col_map[std_name] = None  # Mark as missing initially
 
-    # Make sure we have the required columns
-    available_ohlc = [col for col in ohlc_columns if col in data.columns]
+    # Populate the standardized DataFrame
+    for std_name, original_col in col_map.items():
+        if original_col:
+            ohlc_std[std_name] = data[original_col]
 
-    if not available_ohlc:
-        logger.error("No OHLC columns found in data")
-        return data
+    # Apply fallbacks for missing standard columns
+    fallback_source = None
+    if col_map["close"] is not None:  # Prefer close if available
+        fallback_source = col_map["close"]
+    elif col_map["open"] is not None:  # Else use open
+        fallback_source = col_map["open"]
 
-    # Create a subset of just the OHLC data
-    ohlc_data = data[available_ohlc]
+    if fallback_source:
+        for std_name, original_col in col_map.items():
+            if original_col is None:  # If the standard column was missing
+                logger.warning(
+                    f"Missing standard column '{std_name}'. Using fallback '{fallback_source}'."
+                )
+                ohlc_std[std_name] = data[
+                    fallback_source
+                ]  # Use original data for fallback
+    else:
+        # If neither open nor close exists, we can't really do OHLC resampling
+        logger.error(
+            "Cannot perform OHLC resampling: requires at least 'open' or 'close' column."
+        )
+        # Return original data or empty? Let's return empty for consistency.
+        return pd.DataFrame()  # Correct indentation
 
-    # Map our column names to the expected open/high/low/close names
-    column_mapping = {}
-    for idx, col in enumerate(available_ohlc):
-        if idx < len(ohlc_columns):
-            column_mapping[col] = ohlc_columns[idx]
+    # Define the standard aggregation rules
+    agg_rules = {"open": "first", "high": "max", "low": "min", "close": "last"}
 
-    # Rename columns to standard OHLC names
-    ohlc_data = ohlc_data.rename(columns=column_mapping)
+    # Filter rules to only include columns present in our standardized df
+    dynamic_agg_rules = {
+        col: rule for col, rule in agg_rules.items() if col in ohlc_std.columns
+    }
 
-    # Make sure we have standard OHLC names
-    for col in ["open", "high", "low", "close"]:
-        if col not in ohlc_data.columns:
-            logger.warning(f"Missing {col} column for resampling. Using fallbacks.")
+    if not dynamic_agg_rules:
+        logger.error("No valid columns for OHLC resampling after fallbacks.")
+        resampled = pd.DataFrame()
+    else:
+        # Resample the standardized data
+        resampled = ohlc_std.resample(new_interval).agg(dynamic_agg_rules)
 
-            # Use fallbacks
-            if col == "open" and "close" in ohlc_data.columns:
-                ohlc_data["open"] = ohlc_data["close"]
-            elif col == "high" and "close" in ohlc_data.columns:
-                ohlc_data["high"] = ohlc_data["close"]
-            elif col == "low" and "close" in ohlc_data.columns:
-                ohlc_data["low"] = ohlc_data["close"]
-            elif col == "close" and "open" in ohlc_data.columns:
-                ohlc_data["close"] = ohlc_data["open"]
-
-    # Resample OHLC data
-    resampled = ohlc_data.resample(new_interval).agg(ohlc_dict)
-
-    # Add volume if present
+    # Add volume if present and requested
     if volume_column and volume_column in data.columns:
         volume_resampled = data[volume_column].resample(new_interval).sum()
-        resampled[volume_column] = volume_resampled
+        # Ensure resampled is not empty before trying to assign volume
+        if not resampled.empty:
+            resampled[volume_column] = volume_resampled
 
     return resampled
 

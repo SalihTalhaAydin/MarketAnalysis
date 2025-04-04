@@ -57,10 +57,13 @@ def calculate_position_size(
     if use_kelly:
         # If historical win rate and payoff available, use those
         if win_rate is not None and payoff_ratio is not None:
-            if payoff_ratio <= 0:
-                logger.warning("Payoff ratio must be positive for Kelly criterion.")
-                kelly_win_rate = 0.5  # Fallback to neutral
-                kelly_payoff = 1.0
+            if payoff_ratio <= 1e-6:  # Use epsilon comparison
+                logger.warning(
+                    "Payoff ratio is zero or negative, cannot use Kelly. Defaulting to max risk."
+                )
+                # Directly set kelly_pct to max_risk and skip further Kelly calculation
+                kelly_pct = max_risk_per_trade
+                use_kelly = False  # Prevent entering the Kelly calculation block below
             else:
                 kelly_win_rate = max(0, min(1, win_rate))
                 kelly_payoff = payoff_ratio
@@ -77,17 +80,14 @@ def calculate_position_size(
             )
 
         # Kelly formula: f* = (p * b - (1 - p)) / b = p - (1-p)/b
-        # Ensure payoff is positive
-        if kelly_payoff > 1e-6:
+        # Perform Kelly calculation only if use_kelly is still True and stats are valid
+        if use_kelly:  # Check flag again after potential override above
+            # Kelly formula: f* = (p * b - (1 - p)) / b = p - (1-p)/b
             kelly_f = kelly_win_rate - (1 - kelly_win_rate) / kelly_payoff
             # Use half Kelly for safety, ensure non-negative
             kelly_pct = max(0, kelly_f * 0.5)
             logger.info(f"Kelly fraction (half): {kelly_pct:.4f}")
-        else:
-            logger.warning(
-                "Payoff ratio is zero or negative, cannot use Kelly. Defaulting to max risk."
-            )
-            kelly_pct = max_risk_per_trade
+        # If use_kelly was false initially or became false due to bad payoff, kelly_pct remains max_risk_per_trade
 
     else:
         # Fixed fractional approach

@@ -11,25 +11,19 @@ import pandas as pd
 # Setup logging
 logger = logging.getLogger(__name__)
 
-# Try importing technical analysis libraries with fallbacks
+# Import technical analysis library (pandas-ta)
+# Assume it's installed via requirements.txt
 try:
     import pandas_ta as ta
 
     PANDAS_TA_AVAILABLE = True
+    logger.info("pandas-ta library loaded successfully.")
 except ImportError:
-    logger.warning("pandas-ta not installed. Installing required package...")
-    import subprocess
-    import sys
-
-    try:
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "pandas-ta"])
-        import pandas_ta as ta
-
-        PANDAS_TA_AVAILABLE = True
-    except Exception as e:
-        logger.error(f"Failed to install pandas-ta: {e}")
-        PANDAS_TA_AVAILABLE = False
-
+    logger.warning(
+        "pandas-ta not found. Please install it (`pip install pandas-ta`) to use technical indicators."
+    )
+    ta = None  # Define ta as None if import fails
+    PANDAS_TA_AVAILABLE = False
 # Try importing advanced stats libraries
 try:
     from arch import arch_model
@@ -451,9 +445,12 @@ def calculate_market_regime_features(df: pd.DataFrame) -> Dict[str, pd.Series]:
         try:
             # Setup a rolling ADF test window
             window = 100
+            # Handle numpy array in lambda: remove nans, check length, then call adfuller
             adf_pvalues = prices.rolling(window).apply(
                 lambda x: (
-                    adfuller(x.dropna())[1] if len(x.dropna()) >= window else np.nan
+                    adfuller(x[~np.isnan(x)])[1]
+                    if len(x[~np.isnan(x)]) >= window
+                    else np.nan
                 ),
                 raw=True,
             )
