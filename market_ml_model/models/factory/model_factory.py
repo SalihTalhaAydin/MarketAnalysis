@@ -60,9 +60,9 @@ except ImportError:
 # Try to import TensorFlow/Keras
 try:
     import tensorflow as tf
+    from tensorflow.keras.layers import LSTM  # Updated import block
     from tensorflow.keras.layers import (
         GRU,
-        LSTM,  # Updated import block
         BatchNormalization,
         Bidirectional,
         Concatenate,

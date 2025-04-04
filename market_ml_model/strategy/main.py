@@ -51,8 +51,8 @@ try:
     from ..models.evaluation.metrics import (
         generate_model_report,
     )  # Added report generation
+    from ..models.prediction import ModelPredictorBase  # Added load_model
     from ..models.prediction import (
-        ModelPredictorBase,  # Added load_model
         PredictionManager,
         SignalGenerator,
         load_model,
