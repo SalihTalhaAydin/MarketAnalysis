@@ -11,15 +11,11 @@ from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
 
 # Import config classes and detector to test
-from market_ml_model.strategy.main import (
-    EnhancedTradingStrategy,
-)  # Import the main strategy class
-from market_ml_model.strategy.main import (
-    MarketRegimeDetector,
-)  # Import the class to test
-from market_ml_model.strategy.main import (
+from market_ml_model.strategy.main import (  # Import the main strategy class; Import the class to test
     AssetConfig,
+    EnhancedTradingStrategy,
     FeatureConfig,
+    MarketRegimeDetector,
     ModelConfig,
     StrategyConfig,
     WalkForwardConfig,
