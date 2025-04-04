@@ -27,10 +27,10 @@ from market_ml_model.src.backtesting import backtest_strategy
 # --- Configuration ---
 # Default parameters for analysis, can be overridden or read from config
 DEFAULT_SYMBOL = "AAPL"  # Example stock symbol
-DEFAULT_TIMEFRAME = "1m"  # Changed to 1-minute for scalping
+DEFAULT_TIMEFRAME = "5m"  # Changed to 5-minute to reduce noise
 # Dates for data loading (last 7 days for 1m data)
 today = datetime.date.today()
-start_date_obj = today - timedelta(days=7)  # 7 days (yfinance 1m limit)
+start_date_obj = today - timedelta(days=30)  # Fetch more data for 5m interval
 DEFAULT_START_DATE = start_date_obj.strftime("%Y-%m-%d")
 DEFAULT_END_DATE = today.strftime("%Y-%m-%d")
 
@@ -64,10 +64,10 @@ def run_trading_strategy_analysis(
     # 3. Engineer Features
     # Pass SL/TP multipliers and max hold period to feature engineering
     # These are defined later in the WFV setup section
-    # Scalping-specific Triple Barrier parameters
-    atr_multiplier_sl = 1.0  # Tighter SL (was 2.0)
-    atr_multiplier_tp = 1.5  # Tighter TP (was 3.0)
-    max_holding_period = 3   # Shorter hold period (was 5)
+    # Define Triple Barrier parameters for feature engineering
+    atr_multiplier_sl = 1.0  # For label generation
+    atr_multiplier_tp = 2.0  # Changed to 2:1 R:R for label generation
+    max_holding_period = 10  # For label generation
 
     featured_data = engineer_features(
         preprocessed_data,
@@ -80,7 +80,7 @@ def run_trading_strategy_analysis(
         return
 
     # 4. Separate features (X) and target (y)
-    target_col_name = 'triple_barrier_label'  # New target column
+    target_col_name = 'triple_barrier_label'  # Restored target column name
     if target_col_name not in featured_data.columns:
         print(f"Error: '{target_col_name}' column not found after features.")
         return
@@ -111,12 +111,13 @@ def run_trading_strategy_analysis(
     step_size = 200          # How much to slide the window forward each time
     min_train_size = 800     # Minimum bars required for training
 
-    # ATR SL/TP Parameters
+    # ATR SL/TP Parameters for Backtesting Trade Management
+    # These can be the same or different from the ones used for labeling
     atr_col = 'ATRr_10'      # Column name for ATR from feature engineering
-    # Scalping-specific Triple Barrier parameters (defined above, used here)
-    # atr_multiplier_sl = 1.0 # Defined earlier
-    # atr_multiplier_tp = 1.5 # Defined earlier
-    prob_threshold = 0.65    # Increased confidence threshold (was 0.52)
+    # Use the same SL/TP multipliers for backtesting as for labeling
+    # atr_multiplier_sl = 1.0 # Defined above
+    # atr_multiplier_tp = 1.5 # Defined above
+    prob_threshold = 0.65    # Reverted confidence threshold (was 0.55)
     slippage_pct = 0.0005   # Example: 0.05% slippage per trade side
     # max_holding_period defined earlier before calling engineer_features
 
@@ -131,6 +132,7 @@ def run_trading_strategy_analysis(
         return
 
     all_fold_performances = []
+    all_fold_importances = []  # Store importances from each fold
     fold_number = 0
     start_train_idx = 0
 
@@ -175,12 +177,17 @@ def run_trading_strategy_analysis(
 
         # 5. Train Model (on current training fold)
         print("Training model...")
-        model = train_classification_model(train_features, train_target)
+        model, importance_df = train_classification_model(
+            train_features, train_target
+        )
         if model is None:
             print(f"Model training failed for Fold {fold_number}. Skipping.")
             start_train_idx += step_size
-            initial_train_size = end_train_idx - start_train_idx
+            # Recalculate for expanding window logic
+            initial_train_size = end_train_idx + step_size - start_train_idx
             continue
+        if importance_df is not None:
+            all_fold_importances.append(importance_df)
 
         # 6. Generate Probabilities (on current test fold)
         print("Generating predictions...")
@@ -193,7 +200,7 @@ def run_trading_strategy_analysis(
             start_train_idx += step_size
             initial_train_size = end_train_idx - start_train_idx
             continue
-        # Expect probabilities for 3 classes: -1 (SL), 0 (Time), 1 (TP)
+        # Expect probabilities for 3 classes: 0 (SL), 1 (Time), 2 (TP)
         if probabilities.shape[1] < 3:
             print(
                 f"Error: Probabilities shape mismatch (expected 3 classes) "
@@ -205,19 +212,21 @@ def run_trading_strategy_analysis(
             initial_train_size = end_train_idx + step_size - start_train_idx
             continue
 
-        # Generate Predictions (Signals) from Probabilities
-        # Generate Predictions (Signals) based on Triple Barrier probabilities
-        # Assumes model.predict_proba() returns probs for classes [-1, 0, 1]
-        # Index 0: P(SL = -1)
-        # Index 1: P(Time = 0)
-        # Index 2: P(TP = 1)
-        # Generate Predictions (Signals) based on Triple Barrier probabilities
-        # Index 0: P(SL = -1), Index 1: P(Time = 0), Index 2: P(TP = 1)
+        # Generate Predictions (Signals) from Triple Barrier probabilities
+        # Index 0: P(SL = -1 mapped to 0)
+        # Index 1: P(Time = 0 mapped to 1)
+        # Index 2: P(TP = 1 mapped to 2)
         predicted_classes = []
         for prob_sl, prob_time, prob_tp in probabilities:
-            if prob_tp > prob_threshold:
+            # Require prob of desired outcome to be highest AND > threshold
+            go_long = (prob_tp > prob_sl and prob_tp > prob_time and
+                       prob_tp > prob_threshold)
+            go_short = (prob_sl > prob_tp and prob_sl > prob_time and
+                        prob_sl > prob_threshold)
+
+            if go_long:
                 predicted_classes.append(1)  # Signal Long
-            elif prob_sl > prob_threshold:
+            elif go_short:
                 predicted_classes.append(-1)  # Signal Short
             else:
                 predicted_classes.append(0)  # Signal Hold
@@ -270,7 +279,7 @@ def run_trading_strategy_analysis(
         # For expanding window:
         initial_train_size = end_train_idx + step_size - start_train_idx
 
-    # --- Aggregate and Display WFV Results ---
+    # --- Aggregate and Display WFV Results & Importances ---
     print("\n--- Walk-Forward Validation Complete ---")
     if not all_fold_performances:
         print("No successful backtest folds completed.")
@@ -303,13 +312,25 @@ def run_trading_strategy_analysis(
                 f"Average Win Rate (Trades): {np.mean(valid_win_rates):.2f}%"
             )
 
-    # --- TBD: Calculate overall Sharpe, Drawdown etc. across all folds ---
-    # This requires stitching the equity curves or returns series together.
 
-    # --- (Code from lines 116-153 is now inside the WFV loop) ---
+    # --- Aggregate and Display Feature Importances ---
+    if all_fold_importances:
+        # Concatenate all importance dataframes
+        combined_importances = pd.concat(all_fold_importances)
+        # Calculate mean importance for each feature across folds
+        average_importances = combined_importances.groupby('Feature') \
+                                                  .Importance.mean() \
+                                                  .sort_values(ascending=False)
+        print("\n=== Average Feature Importances (Across Folds) ===")
+        print(average_importances)
+    else:
+        print("\nNo feature importances were collected.")
 
-    # --- (Code from lines 154-219 is replaced by WFV loop and aggregation) ---
 
+# --- TBD: Calculate overall Sharpe, Drawdown etc. across all folds ---
+# This requires stitching the equity curves or returns series together.
+
+# --- TBD: Add further analysis, visualization, or saving results ---
     # --- TBD: Add further analysis, visualization, or saving results ---
 
 

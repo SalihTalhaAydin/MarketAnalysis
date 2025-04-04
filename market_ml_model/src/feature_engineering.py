@@ -96,9 +96,9 @@ def get_triple_barrier_labels(
 # --- Main Feature Engineering Function ---
 def engineer_features(
     df: pd.DataFrame,
-    atr_multiplier_tp: float = 4.0,  # Default from main_strategy
-    atr_multiplier_sl: float = 2.0,  # Default from main_strategy
-    max_holding_period: int = 10     # Agreed default vertical barrier
+    atr_multiplier_tp: float = 2.0,  # Changed to 2:1 R:R with SL
+    atr_multiplier_sl: float = 1.0,  # Default for 5m
+    max_holding_period: int = 10     # Default for 5m
 ) -> pd.DataFrame | None:
     """
     Adds technical indicators, returns, lagged features, and Triple Barrier
@@ -178,11 +178,11 @@ def engineer_features(
             # Appends MACD_5_10_5, MACDh_5_10_5, MACDs_5_10_5
             processed_df.ta.macd(fast=5, slow=10, signal=5, append=True)
 
-            # Stochastic Oscillator (%K, %D) - Use shorter periods
-            # Appends STOCHk_14_3_3, STOCHd_14_3_3 (default) -> Let's shorten
-            # Stochastic Oscillator (%K, %D) - Use shorter periods
-            # Appends STOCHk_5_3_3, STOCHd_5_3_3
-            processed_df.ta.stoch(k=5, d=3, smooth_k=3, append=True)
+            # Stochastic Oscillator (%K, %D) - Removed as potentially noisy
+            # # Appends STOCHk_14_3_3, STOCHd_14_3_3 (default) -> Let's shorten
+            # # Stochastic Oscillator (%K, %D) - Use shorter periods
+            # # Appends STOCHk_5_3_3, STOCHd_5_3_3
+            # processed_df.ta.stoch(k=5, d=3, smooth_k=3, append=True)
 
             # Volume SMA (Simple Moving Average of Volume)
             if 'volume' in processed_df.columns:
@@ -191,16 +191,52 @@ def engineer_features(
             else:
                 print("Warning: 'volume' col not found, skipping Volume SMA.")
 
-            # Price Rate of Change (ROC) - Short term
-            processed_df.ta.roc(length=3, append=True)  # Appends 'ROC_3'
+            # Price Rate of Change (ROC) - Removed as potentially noisy
+            # processed_df.ta.roc(length=3, append=True)  # Appends 'ROC_3'
 
-            print("pandas_ta indicators calculated.")
+            # --- Add Custom Features Based on Indicators ---
+            # EMA 5/8 Crossover Signal
+            if ('EMA_5' in processed_df.columns and
+                    'EMA_8' in processed_df.columns):
+                ema5 = processed_df['EMA_5']
+                ema8 = processed_df['EMA_8']
+                processed_df['EMA_5_8_cross'] = 0
+                # Cross above: EMA5 was below EMA8, now is above
+                cross_above_mask = ((ema5 > ema8) &
+                                    (ema5.shift(1) < ema8.shift(1)))
+                processed_df.loc[cross_above_mask, 'EMA_5_8_cross'] = 1
+                # Cross below: EMA5 was above EMA8, now is below
+                cross_below_mask = ((ema5 < ema8) &
+                                    (ema5.shift(1) > ema8.shift(1)))
+                processed_df.loc[cross_below_mask, 'EMA_5_8_cross'] = -1
+            else:
+                print("Warning: EMA_5 or EMA_8 missing, skipping EMA "
+                      "crossover feature.")
+
+            # Distance from SMA10, normalized by ATR
+            if ('SMA_10' in processed_df.columns and
+                    'ATRr_10' in processed_df.columns):
+                # Avoid division by zero or near-zero ATR
+                atr_safe = processed_df['ATRr_10'].replace(
+                    0, np.nan
+                ).ffill()  # Use ffill() directly
+                dist_sma_atr = (
+                    (processed_df['close'] - processed_df['SMA_10']) / atr_safe
+                )
+                # Fill initial NaNs and assign back
+                processed_df['dist_from_SMA10_atr'] = dist_sma_atr.fillna(0)
+            else:
+                print("Warning: SMA_10 or ATRr_10 missing, skipping distance "
+                      "from SMA feature.")
+
+            print("pandas_ta indicators and derived features calculated.")
         except Exception as e:
-            print(f"Error calculating pandas_ta indicators: {e}")
+            print("Error calculating pandas_ta indicators or derived "
+                  f"features: {e}")
             return None  # Stop processing if indicators fail
     elif 'ATRr_10' not in processed_df.columns:
         # If pandas_ta failed or wasn't available, we MUST have ATRr_10
-        print("Error: ATRr_10 is required for Triple Barrier but is missing.")
+        print("Error: ATRr_10 is required but is missing.")  # Still need ATR
         return None
     # else: pandas_ta not available, but ATRr_10 exists, proceed.
 
@@ -223,10 +259,10 @@ def engineer_features(
     else:
         print("Warning: 'volume' col not found, skipping volume_roc.")
 
-    # --- Add Time-Based Features ---
+    # --- Add Time-Based Features --- # Keep hour/minute commented out
     # Ensure index is DatetimeIndex (checked at the beginning)
-    processed_df['hour'] = processed_df.index.hour
-    processed_df['minute'] = processed_df.index.minute
+    # processed_df['hour'] = processed_df.index.hour
+    # processed_df['minute'] = processed_df.index.minute
     # Consider dayofweek if running over multiple days:
     # processed_df['dayofweek'] = processed_df.index.dayofweek
 
@@ -276,6 +312,23 @@ def engineer_features(
         processed_df['triple_barrier_label'] = processed_df[
             'triple_barrier_label'
         ].astype(int)
+
+    # --- Sanitize Column Names ---
+    # Replace spaces and potentially other problematic characters with
+    # underscores to avoid issues with models like LightGBM.
+    original_cols = processed_df.columns
+    processed_df.columns = (
+        processed_df.columns.str.replace(r'[\s\(\)\%\.]+', '_', regex=True)
+        .str.replace(r'_+', '_', regex=True)  # Consolidate underscores
+        .str.strip('_')  # Remove leading/trailing underscores
+    )
+    cleaned_cols = processed_df.columns
+    if list(original_cols) != list(cleaned_cols):
+        print("Sanitized column names (example changes):")
+        for orig, clean in zip(original_cols, cleaned_cols):
+            if orig != clean:
+                print(f"  '{orig}' -> '{clean}'")
+                break  # Just show one example
 
     print("Feature engineering complete (with Triple Barrier). "
           f"DataFrame shape: {processed_df.shape}")

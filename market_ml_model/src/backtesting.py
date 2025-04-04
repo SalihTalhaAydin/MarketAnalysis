@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np  # Import NumPy
 import os  # Added for directory creation
 
 
@@ -120,66 +121,95 @@ def backtest_strategy(
     # --- Now calculate SL/TP hits and exits on the cleaned df ---
 
     # Determine if SL/TP was hit during the current bar
-    # Initialize hit flags to False
-    sl_hit_long = pd.Series(False, index=df.index)
-    tp_hit_long = pd.Series(False, index=df.index)
-    sl_hit_short = pd.Series(False, index=df.index)
-    tp_hit_short = pd.Series(False, index=df.index)
+    # Initialize temporary hit columns in the DataFrame
+    df['sl_hit_long_temp'] = False
+    df['tp_hit_long_temp'] = False
+    df['sl_hit_short_temp'] = False
+    df['tp_hit_short_temp'] = False
 
     # Only perform comparison on rows where SL/TP is defined and signal matches
     if atr_multiplier_sl is not None:  # Only calculate if SL is enabled
         long_sl_mask = (df['signal'] == 1) & df['stop_loss_price'].notna()
         if long_sl_mask.any():
-            sl_hit_long[long_sl_mask] = (
+            df.loc[long_sl_mask, 'sl_hit_long_temp'] = (
                 df.loc[long_sl_mask, 'low'] <=
                 df.loc[long_sl_mask, 'stop_loss_price']
-            ).astype(bool)
+            )
 
         short_sl_mask = (df['signal'] == -1) & df['stop_loss_price'].notna()
         if short_sl_mask.any():
-            sl_hit_short[short_sl_mask] = (
+            df.loc[short_sl_mask, 'sl_hit_short_temp'] = (
                 df.loc[short_sl_mask, 'high'] >=
                 df.loc[short_sl_mask, 'stop_loss_price']
-            ).astype(bool)  # Note: >= for short SL
+            )  # Note: >= for short SL
 
     if atr_multiplier_tp is not None:  # Only calculate if TP is enabled
         long_tp_mask = (df['signal'] == 1) & df['take_profit_price'].notna()
         if long_tp_mask.any():
-            tp_hit_long[long_tp_mask] = (
+            df.loc[long_tp_mask, 'tp_hit_long_temp'] = (
                 df.loc[long_tp_mask, 'high'] >=
                 df.loc[long_tp_mask, 'take_profit_price']
-            ).astype(bool)
+            )
 
         short_tp_mask = (df['signal'] == -1) & df['take_profit_price'].notna()
         if short_tp_mask.any():
-            tp_hit_short[short_tp_mask] = (
+            df.loc[short_tp_mask, 'tp_hit_short_temp'] = (
                 df.loc[short_tp_mask, 'low'] <=
                 df.loc[short_tp_mask, 'take_profit_price']
-            ).astype(bool)  # Note: <= for short TP
+            )  # Note: <= for short TP
 
-    # Combine SL/TP hit flags
-    sl_hit = sl_hit_long | sl_hit_short
-    tp_hit = tp_hit_long | tp_hit_short
+    # Combine SL/TP hit flags from temporary columns
+    sl_hit = df['sl_hit_long_temp'] | df['sl_hit_short_temp']
+    tp_hit = df['tp_hit_long_temp'] | df['tp_hit_short_temp']
+
+    # Store individual hits before dropping temp columns
+    sl_hit_long = df['sl_hit_long_temp']
+    tp_hit_long = df['tp_hit_long_temp']
+    sl_hit_short = df['sl_hit_short_temp']
+    tp_hit_short = df['tp_hit_short_temp']
+
+    # Drop temporary columns
+    df.drop(columns=[
+        'sl_hit_long_temp', 'tp_hit_long_temp',
+        'sl_hit_short_temp', 'tp_hit_short_temp'
+    ], inplace=True)
 
     # Adjust return for SL/TP hits (prioritize SL)
     # Note: Approximates exit at SL/TP level. More accurate needs iteration.
-    df['raw_strategy_return'] = df['raw_strategy_return_signal']  # Default
-    # Adjust return based on actual SL/TP prices hit
+    # Initialize with signal return
+    df['raw_strategy_return'] = df['raw_strategy_return_signal']
+
+    # Calculate potential SL/TP returns for all relevant rows
+    sl_return = pd.Series(np.nan, index=df.index)
+    tp_return = pd.Series(np.nan, index=df.index)
+
     if atr_multiplier_sl is not None:
-        # If SL hit, return is based on SL price relative to entry
         sl_return = (
             (df['stop_loss_price'] / df['entry_price'] - 1) * df['signal']
         )
-        df.loc[sl_hit, 'raw_strategy_return'] = sl_return
 
     if atr_multiplier_tp is not None:
-        # Apply TP only if SL wasn't hit on the same bar
-        tp_applicable = tp_hit & ~sl_hit
-        # If TP hit, return is based on TP price relative to entry
         tp_return = (
             (df['take_profit_price'] / df['entry_price'] - 1) * df['signal']
         )
-        df.loc[tp_applicable, 'raw_strategy_return'] = tp_return
+        # Ensure TP is only considered if SL wasn't hit
+        tp_applicable = tp_hit & ~sl_hit
+    else:
+        # If no TP, tp_applicable mask is all False
+        tp_applicable = pd.Series(False, index=df.index)
+
+    # Use np.where for conditional assignment (prioritize SL)
+    # If SL hit, use sl_return. If TP hit (and SL didn't), use tp_return.
+    # Otherwise, keep the original raw_strategy_return.
+    df['raw_strategy_return'] = np.where(
+        sl_hit,
+        sl_return,
+        np.where(
+            tp_applicable,
+            tp_return,
+            df['raw_strategy_return']  # Original signal return
+        )
+    ).astype(float)  # Cast final result to float
 
     # Identify changes in position state (on cleaned df)
     was_flat = df['signal'].shift(1).fillna(0) == 0
@@ -198,6 +228,7 @@ def backtest_strategy(
 
     # Identify actual exit events (signal change OR SL/TP hit)
     # Note: SL/TP hits force an exit regardless of the next signal
+    # Use the stored Series for exit calculation
     actual_long_exit = long_exit_signal | (sl_hit_long | tp_hit_long)
     actual_short_exit = short_exit_signal | (sl_hit_short | tp_hit_short)
 
