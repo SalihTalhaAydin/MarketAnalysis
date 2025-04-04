@@ -124,8 +124,8 @@ def calculate_returns_metrics(returns: pd.Series) -> Dict[str, float]:
         np.append(lose_streak_ends, len(lose_streak)))
 
     # Get only streaks of wins/losses (not zeros)
-    win_streak_lengths = win_streak_lengths[win_streak[win_streak_ends] > 0] if len(win_streak_ends) > 0 else np.array([])
-    lose_streak_lengths = lose_streak_lengths[lose_streak[lose_streak_ends] > 0] if len(lose_streak_ends) > 0 else np.array([])
+    win_streak_lengths = win_streak_lengths[win_streak.iloc[win_streak_ends] > 0] if len(win_streak_ends) > 0 else np.array([])
+    lose_streak_lengths = lose_streak_lengths[lose_streak.iloc[lose_streak_ends] > 0] if len(lose_streak_ends) > 0 else np.array([])
 
 
     metrics['max_consecutive_wins'] = max(

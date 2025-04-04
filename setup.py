@@ -31,6 +31,8 @@ setup(
             "pytest>=7.0.0",
             "pytest-cov>=4.0.0",
             "pylint>=2.15.0",
+            "black>=23.0.0",  # Added black
+            "isort>=5.10.0",  # Added isort
         ],
     },
     author="Your Name",
