@@ -3,7 +3,8 @@
 # For the full list of built-in configuration values, see the documentation:
 # https://www.sphinx-doc.org/en/master/usage/configuration.html
 
-
+import os
+import sys
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
@@ -82,5 +83,5 @@ autodoc_class_signature = "separated"
 # add_module_names = True
 
 # Add path to the project's source code for autodoc
-# sys.path.insert(0, os.path.abspath('../../')) # Adjust if your code is elsewhere
-# sys.path.insert(0, os.path.abspath('../../market_ml_model')) # Point to the package
+sys.path.insert(0, os.path.abspath("../../"))  # Point to the project root
+# sys.path.insert(0, os.path.abspath('../../market_ml_model')) # Not needed if root is added
