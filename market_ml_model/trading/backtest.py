@@ -139,7 +139,6 @@ def backtest_strategy(
     # Iterate through each bar
     for i in range(1, len(df)):
         current_idx = df.index[i]
-        prev_idx = df.index[i - 1]
 
         # Current market data
         current_close = df.iloc[i]["close"]
@@ -148,7 +147,6 @@ def backtest_strategy(
 
         # Previous data for decisions
         prev_signal = df.iloc[i - 1]["prediction"]
-        prev_close = df.iloc[i - 1]["close"]
 
         # Current volatility
         if atr_col in df.columns:
@@ -160,47 +158,50 @@ def backtest_strategy(
         trade_manager.update(current_idx, {symbol: current_close})
 
         # Process signal for new trades
-        if prev_signal != 0:  # Non-zero signal
-            # Calculate stop loss and take profit prices
+        # Process signal from PREVIOUS bar to decide action for CURRENT bar
+        if prev_signal != 0:  # Non-zero signal from previous bar
+            # Calculate stop loss and take profit prices based on CURRENT close
             if use_dynamic_stops and atr_col in df.columns:
+                # Use ATR from the PREVIOUS bar to set stops for entry at CURRENT bar
                 atr_value = df.iloc[i - 1][atr_col]
 
                 if prev_signal == 1:  # Long signal
                     stop_loss = (
-                        prev_close - (atr_multiplier_sl * atr_value)
+                        current_close
+                        - (atr_multiplier_sl * atr_value)  # Based on current_close
                         if atr_multiplier_sl is not None
                         else None
                     )
                     take_profit = (
-                        prev_close + (atr_multiplier_tp * atr_value)
+                        current_close
+                        + (atr_multiplier_tp * atr_value)  # Based on current_close
                         if atr_multiplier_tp is not None
                         else None
                     )
                 else:  # Short signal
                     stop_loss = (
-                        prev_close + (atr_multiplier_sl * atr_value)
+                        current_close
+                        + (atr_multiplier_sl * atr_value)  # Based on current_close
                         if atr_multiplier_sl is not None
                         else None
                     )
                     take_profit = (
-                        prev_close - (atr_multiplier_tp * atr_value)
+                        current_close
+                        - (atr_multiplier_tp * atr_value)  # Based on current_close
                         if atr_multiplier_tp is not None
                         else None
                     )
             else:
-                # Default fixed percentage stops (1% SL, 2% TP)
-                # Calculate these regardless of atr_multiplier values when use_dynamic_stops is False
+                # Default fixed percentage stops based on CURRENT close
                 if prev_signal == 1:  # Long signal
-                    stop_loss = prev_close * (1 - 0.01)
-                    take_profit = prev_close * (1 + 0.02)
+                    stop_loss = current_close * (1 - 0.01)
+                    take_profit = current_close * (1 + 0.02)
                 else:  # Short signal
-                    stop_loss = prev_close * (1 + 0.01)
-                    take_profit = prev_close * (1 - 0.02)
-                # Fixed stops are calculated and should be used unless explicitly disabled
-                # by a different mechanism (not currently implemented based on atr_multiplier being None)
+                    stop_loss = current_close * (1 + 0.01)
+                    take_profit = current_close * (1 - 0.02)
 
-            # Calculate entry price with slippage
-            entry_price = prev_close * (1 + slippage_pct_per_trade * prev_signal)
+            # Calculate entry price based on CURRENT close with slippage
+            entry_price = current_close * (1 + slippage_pct_per_trade * prev_signal)
 
             # Convert signal to signal strength (simplistic approach)
             signal_strength = max(0.5, min(1.0, abs(prev_signal) * signal_threshold))
@@ -215,16 +216,16 @@ def backtest_strategy(
                 # Apply transaction cost to entry
                 trade_manager.capital -= trade_manager.capital * transaction_cost_pct
 
-                # Enter position
+                # Enter position at CURRENT timestamp and price
                 trade_manager.enter_position(
-                    timestamp=prev_idx,
+                    timestamp=current_idx,  # Use current timestamp for entry
                     symbol=symbol,
-                    direction=prev_signal,
-                    entry_price=entry_price,
+                    direction=prev_signal,  # Use signal from previous bar
+                    entry_price=entry_price,  # Use calculated entry price for current bar
                     stop_loss=stop_loss,
                     take_profit=take_profit,
                     signal_strength=signal_strength,
-                    volatility=current_volatility,
+                    volatility=current_volatility,  # Volatility at current bar
                     tags=["backtest"],
                 )
 

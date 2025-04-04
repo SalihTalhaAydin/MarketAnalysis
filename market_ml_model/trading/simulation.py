@@ -334,6 +334,7 @@ class TradeManager:
         self.positions = {}  # symbol -> size
         self.equity_curve = [initial_capital]
         self.equity_timestamps = []
+        self._first_update_done = False  # Flag to handle initial timestamp
         self.current_drawdown = 0.0
         self.max_drawdown = 0.0
 
@@ -558,9 +559,16 @@ class TradeManager:
                     f"No price data for {symbol}. Cannot update trade {trade_id}."
                 )
 
-        # Update equity curve
-        self.equity_timestamps.append(timestamp)
-        self.equity_curve.append(self.capital)
+        # Update equity curve and timestamps
+        if not self._first_update_done:
+            # On the first update, just record the timestamp for the initial capital
+            self.equity_timestamps.append(timestamp)
+            self._first_update_done = True
+            # self.equity_curve already contains initial capital, so don't append here
+        else:
+            # On subsequent updates, record timestamp and updated capital
+            self.equity_timestamps.append(timestamp)
+            self.equity_curve.append(self.capital)
 
         # Update drawdown
         peak_capital = max(self.equity_curve)

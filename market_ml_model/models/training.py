@@ -238,10 +238,11 @@ def train_classification_model(
     logger.info(f"Starting model training with ID: {model_id}")
 
     # Create model output directory if needed
-    model_dir = None
-    if output_dir:
-        model_dir = os.path.join(output_dir, model_id)
+    # Use the output_dir directly as it already includes fold/run info
+    model_dir = output_dir  # Assign model_dir regardless
+    if output_dir:  # Check if output_dir is provided before trying to create it
         try:
+            # Ensure model_dir (which is output_dir) exists
             os.makedirs(model_dir, exist_ok=True)
         except OSError as e:
             logger.error(f"Failed to create output directory {model_dir}: {e}")
@@ -457,9 +458,20 @@ def train_classification_model(
             model, X_test_processed, y_test, class_names=class_names
         )
         metrics = {"train": train_metrics, "test": test_metrics}
-        logger.info(
-            f"Test Set Metrics: Accuracy={test_metrics.get('accuracy', 'N/A'):.4f}, F1-Weighted={test_metrics.get('f1_weighted', 'N/A'):.4f}"
+        # Conditionally format metrics to avoid errors if they are strings (e.g., 'N/A')
+        acc_metric = test_metrics.get("accuracy", "N/A")
+        f1_metric = test_metrics.get("f1_weighted", "N/A")
+        acc_str = (
+            f"{acc_metric:.4f}"
+            if isinstance(acc_metric, (int, float))
+            else str(acc_metric)
         )
+        f1_str = (
+            f"{f1_metric:.4f}"
+            if isinstance(f1_metric, (int, float))
+            else str(f1_metric)
+        )
+        logger.info(f"Test Set Metrics: Accuracy={acc_str}, F1-Weighted={f1_str}")
 
         # --- Feature Importance ---
         logger.info("Calculating feature importance...")
@@ -484,9 +496,18 @@ def train_classification_model(
             model_path = os.path.join(model_dir, "model.pkl")
             try:
                 joblib.dump(model, model_path)
-                logger.info(f"Saved trained model to {model_path}")
+                logger.info(f"Attempted to save trained model to {model_path}")
+                # Explicitly check if file exists after saving
+                if not os.path.exists(model_path):
+                    logger.error(
+                        f"Model file was NOT created at {model_path} despite no save error."
+                    )
+                else:
+                    logger.info(
+                        f"Successfully verified model file exists at {model_path}"
+                    )
             except Exception as e:
-                logger.error(f"Failed to save model: {e}")
+                logger.error(f"Failed to save model due to exception: {e}")
 
             # Save training configuration
             final_config = {

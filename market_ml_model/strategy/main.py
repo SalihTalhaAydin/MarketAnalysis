@@ -1173,47 +1173,31 @@ class EnhancedTradingStrategy:
             logger.error("Cannot generate predictions with empty features.")
             return None
 
-        # Determine which model key (and thus path) to use
+        # Determine which model key to use (handles regimes)
         model_key = asset_config.symbol
-        model_sub_dir = asset_config.symbol
         if regime is not None and self.config.model_config.regime_adaptation_enabled:
             regime_key = f"{asset_config.symbol}_regime_{regime}"
-            # Check if a regime-specific model path exists
-            potential_regime_path = os.path.join(
-                self.config.output_dir,
-                "models",
-                asset_config.symbol,
-                f"regime_{regime}",
-            )
-            if fold_id:
-                potential_regime_path = os.path.join(potential_regime_path, fold_id)
-            # Check if this specific model was trained and path stored
-            if regime_key in self.models and os.path.exists(self.models[regime_key]):
+            # Check if a specific model was trained for this regime/fold
+            if regime_key in self.models:
                 model_key = regime_key
-                model_sub_dir += f"/regime_{regime}"
             else:
                 logger.warning(
                     f"No specific model found for regime {regime}. Using base model for {asset_config.symbol}."
                 )
-                # Fallback to base model path if regime model doesn't exist
 
-        # Construct the expected model path based on fold_id or latest run
-        model_base_dir = os.path.join(self.config.output_dir, "models", model_sub_dir)
-        if fold_id:
-            model_path = os.path.join(model_base_dir, fold_id)
-        else:
-            # Find the latest run directory if not a specific fold
-            try:
-                latest_run = sorted(
-                    [d for d in os.listdir(model_base_dir) if d.startswith("run_")],
-                    reverse=True,
-                )[0]
-                model_path = os.path.join(model_base_dir, latest_run)
-            except (FileNotFoundError, IndexError):
-                logger.error(
-                    f"No trained model runs found in {model_base_dir} for key '{model_key}'."
-                )
-                return None
+        # Retrieve the correct model path saved during training
+        # The path stored in self.models already includes the fold_id if applicable
+        model_path = self.models.get(model_key)
+
+        if model_path is None or not os.path.exists(model_path):
+            # Handle case where model wasn't trained or path is missing
+            # This might happen if training failed for this specific key/fold
+            logger.error(
+                f"Model path not found or invalid for key '{model_key}'. Expected path: {model_path}"
+            )
+            # Attempt to find the latest run if not a specific fold? - No, rely on stored path.
+            # If fold_id was provided, the path should exist if training succeeded.
+            return None
 
         logger.info(
             f"Generating predictions for {asset_config.symbol} using model from '{model_path}'..."
@@ -1294,27 +1278,40 @@ class EnhancedTradingStrategy:
             logger.error("Cannot generate signals from empty predictions.")
             return None
 
-        # Determine the predictor key used (needed for class name mapping)
-        model_key = asset_config.symbol
+        # Determine the model path that was used to generate these predictions
+        # This should match the logic in generate_predictions
+        model_key_for_path = asset_config.symbol  # Start with base key
+        model_sub_dir = asset_config.symbol
         if regime is not None and self.config.model_config.regime_adaptation_enabled:
+            # Check if a specific model was trained for this regime/fold
             regime_key = f"{asset_config.symbol}_regime_{regime}"
-            # Need to know which predictor was actually used (base or regime-specific)
-            # This logic should ideally be stored or passed from generate_predictions
-            # Assuming for now we can infer it or use a default/base predictor's class names
-            # predictor_key_base = os.path.join( # Removed unused variable
-            #     self.config.output_dir, "models", asset_config.symbol
-            # )  # Path logic needs refinement
-            # predictor_key_regime = os.path.join( # Removed unused variable
-            #     self.config.output_dir,
-            #     "models",
-            #     asset_config.symbol,
-            #     f"regime_{regime}",
-            # ) # Removed orphaned arguments
-            # This path logic is flawed, need the actual path used in generate_predictions
-            # For now, fallback to default class names if predictor not found
-            predictor = self.predictors.get(regime_key) or self.predictors.get(
-                model_key
+            if regime_key in self.models:  # Check if model exists for this regime
+                model_key_for_path = regime_key
+                model_sub_dir += f"/regime_{regime}"
+            # else: use base model_key_for_path and model_sub_dir
+
+        # Retrieve the actual model path used in generate_predictions
+        # This relies on self.models containing the correct path after training
+        model_path = self.models.get(model_key_for_path)
+        if model_path is None:
+            logger.error(
+                f"Could not find trained model path for key '{model_key_for_path}' in self.models."
             )
+            return None
+
+        # Retrieve the corresponding predictor instance using the model_path as the key
+        predictor = self.predictors.get(model_path)
+        if predictor is None:
+            # Attempt to load it if it wasn't loaded during generate_predictions (should not happen ideally)
+            logger.warning(
+                f"Predictor for path '{model_path}' not found in cache, attempting to load."
+            )
+            try:
+                predictor = ModelPredictorBase(model_path)
+                self.predictors[model_path] = predictor  # Cache it
+            except Exception as e:
+                logger.error(f"Failed to load predictor for path '{model_path}': {e}")
+                return None
 
         # Initialize SignalGenerator if not already done for this asset/config
         # Key might just be asset symbol if signal logic doesn't change per regime model
@@ -1389,31 +1386,53 @@ class EnhancedTradingStrategy:
         signals_aligned = signals.loc[common_index]
         ohlc_aligned = ohlc_data.loc[common_index]
 
+        # Ensure ATRr_10 column exists for backtesting dynamic stops
+        ohlc_for_backtest = ohlc_aligned.copy()  # Work on a copy
+        atr_col_name = "ATRr_10"  # Column name expected by backtester
+
+        if atr_col_name not in ohlc_for_backtest.columns:
+            logger.info(f"Calculating '{atr_col_name}' for backtest data...")
+            try:
+                # Check for required columns for ATR calculation
+                if not all(
+                    c in ohlc_for_backtest.columns for c in ["high", "low", "close"]
+                ):
+                    raise ValueError("Missing HLC columns required for ATR calculation")
+
+                # Calculate ATRr_10 using pandas_ta
+                import pandas_ta as ta  # Import here as it's used conditionally
+
+                atr_10 = ta.atr(
+                    ohlc_for_backtest["high"],
+                    ohlc_for_backtest["low"],
+                    ohlc_for_backtest["close"],
+                    length=10,  # Use length 10 for ATRr_10
+                )
+                # Calculate ATR as percentage of close price
+                ohlc_for_backtest[atr_col_name] = (
+                    atr_10 / ohlc_for_backtest["close"]
+                ).replace([np.inf, -np.inf], np.nan)
+                # Handle potential NaNs at the beginning
+                ohlc_for_backtest[atr_col_name] = ohlc_for_backtest[
+                    atr_col_name
+                ].fillna(method="bfill")
+                logger.info(f"Successfully calculated '{atr_col_name}'.")
+
+            except ImportError:
+                logger.error(
+                    "pandas-ta not available. Cannot calculate ATRr_10 for backtest."
+                )
+                # Cannot proceed with dynamic stops if ATRr_10 is missing
+                return None
+            except Exception as e:
+                logger.error(f"Error calculating ATRr_10 for backtest: {e}")
+                return None
+
         # Combine data needed for backtest function
-        backtest_data = ohlc_aligned.copy()
+        backtest_data = ohlc_for_backtest.copy()
         backtest_data["prediction"] = signals_aligned[
             "signal"
         ]  # Use 'signal' as prediction input
-
-        # --- Determine ATR column name ---
-        # Try to find a suitable ATR column (e.g., ATRr_10, atr_14)
-        atr_col_name = None
-        possible_atr_cols = [
-            f"atr_{self.config.feature_config.max_holding_period}",
-            "ATRr_10",
-            "atr_14",
-        ]
-        for col in possible_atr_cols:
-            if col in backtest_data.columns:
-                atr_col_name = col
-                logger.info(f"Using '{atr_col_name}' for ATR in backtest.")
-                break
-        if atr_col_name is None:
-            logger.warning(
-                f"Could not find a suitable ATR column in {list(backtest_data.columns)}. Dynamic stops might use fixed percentages."
-            )
-            # Provide a default name even if not present, backtester might handle it
-            atr_col_name = "ATRr_10"  # Default expected by backtester
 
         logger.info(f"Running backtest for {asset_config.symbol}...")
         try:
@@ -1648,6 +1667,13 @@ class EnhancedTradingStrategy:
                 asset_config=asset_config,
                 fold_id=fold_id,  # Pass fold_id for output organization
             )
+
+            # Log signal counts for debugging
+            if signals_df is not None:
+                signal_counts = signals_df["signal"].value_counts().to_dict()
+                logger.info(f"Step {step} Signal Counts: {signal_counts}")
+            else:
+                logger.warning(f"Step {step}: No signals DataFrame generated.")
 
             if step_results:
                 # Add fold info to results dict
@@ -1939,8 +1965,13 @@ class EnhancedTradingStrategy:
 
             plt.tight_layout()
             if filename:
-                plt.savefig(filename, dpi=300, bbox_inches="tight")
-                logger.info(f"Saved walk-forward plot to {filename}")
+                try:
+                    # Ensure the directory exists before saving
+                    os.makedirs(os.path.dirname(filename), exist_ok=True)
+                    plt.savefig(filename, dpi=300, bbox_inches="tight")
+                    logger.info(f"Saved walk-forward plot to {filename}")
+                except Exception as e:
+                    logger.error(f"Failed to save walk-forward plot to {filename}: {e}")
             else:
                 plt.show()
             plt.close(fig)
@@ -1950,6 +1981,18 @@ class EnhancedTradingStrategy:
                 f"Error plotting walk-forward results for {asset_config.symbol}: {e}"
             )
             plt.close()  # Ensure plot closed on error
+
+        # Ensure the directory exists before saving
+        if filename:
+            try:
+                os.makedirs(os.path.dirname(filename), exist_ok=True)
+                plt.savefig(filename, dpi=300, bbox_inches="tight")
+                logger.info(f"Saved walk-forward plot to {filename}")
+            except Exception as e:
+                logger.error(f"Failed to save walk-forward plot to {filename}: {e}")
+        else:
+            plt.show()
+        plt.close(fig)
 
     def run_strategy(self) -> Dict:
         """Run the full strategy workflow for all configured assets."""

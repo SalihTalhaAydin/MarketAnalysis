@@ -123,60 +123,99 @@ def evaluate_classifier(
         }
 
         # Determine problem type (binary or multiclass)
-        unique_classes = np.unique(np.concatenate([y.unique(), np.unique(y_pred)]))
-        n_classes = len(unique_classes)
+        # Define the full set of expected labels, including 0 for filled NaNs
+        # Use np.unique for both y and y_pred as they might be numpy arrays
+        # Ensure y and y_pred are treated as arrays for np.unique
+        y_arr = y.values if isinstance(y, pd.Series) else y
+        y_pred_arr = y_pred.values if isinstance(y_pred, pd.Series) else y_pred
+        all_labels = sorted(
+            list(set(np.unique(y_arr)) | set(np.unique(y_pred_arr)) | {0, 1, -1})
+        )  # Ensure -1, 0, 1 are considered
+        n_classes = len(all_labels)
 
         if class_names is None:
-            class_names = [str(i) for i in range(n_classes)]
-        else:
-            # Ensure we have enough class names
-            if len(class_names) < n_classes:
-                class_names = list(class_names) + [
-                    str(i) for i in range(len(class_names), n_classes)
-                ]
+            # Use actual labels as names if not provided
+            class_names = [str(label) for label in all_labels]
+        elif len(class_names) < n_classes:
+            # Pad class names if needed (though ideally class_names should match all_labels)
+            logger.warning(
+                f"Provided class_names length ({len(class_names)}) is less than detected labels ({n_classes}). Padding names."
+            )
+            class_names = list(class_names) + [
+                str(label) for label in all_labels[len(class_names) :]
+            ]
 
         # Classification report
         metrics["classification_report"] = classification_report(
             y,
             y_pred,
+            labels=all_labels,  # Explicitly provide all possible labels
+            target_names=class_names,  # Use names corresponding to all_labels
             output_dict=True,
-            zero_division=0,  # Added zero_division
+            zero_division=0,
         )
 
         # Confusion matrix
-        metrics["confusion_matrix"] = confusion_matrix(y, y_pred)
+        metrics["confusion_matrix"] = confusion_matrix(
+            y, y_pred, labels=all_labels
+        )  # Explicitly provide labels
 
         # Additional metrics
-        if n_classes == 2:
-            # Binary classification
-            metrics["precision"] = precision_score(
-                y, y_pred, zero_division=0
-            )  # Added zero_division
-            metrics["recall"] = recall_score(
-                y, y_pred, zero_division=0
-            )  # Added zero_division
-            metrics["f1"] = f1_score(y, y_pred, zero_division=0)  # Added zero_division
+        # NOTE: Removed specific binary classification metrics (precision, recall, f1).
+        # The macro/weighted metrics calculated below handle the [-1, 0, 1] case correctly.
+        # if n_classes == 2: # This check is unreliable if true labels are only [-1, 1] but model predicts 0
+        # # Binary classification
+        # metrics["precision"] = precision_score(
+        #     y, y_pred, zero_division=0, labels=all_labels, pos_label=1 # Specify pos_label if needed
+        # )
+        # metrics["recall"] = recall_score(
+        #     y, y_pred, zero_division=0, labels=all_labels, pos_label=1
+        # )
+        # metrics["f1"] = f1_score(y, y_pred, zero_division=0, labels=all_labels, pos_label=1)
 
-            if y_prob is not None:
-                # ROC curve
-                fpr, tpr, _ = roc_curve(y, y_prob[:, 1])
+        # This block calculates metrics based on probabilities, should not be indented under the commented-out if
+        if y_prob is not None:
+            # ROC curve - Note: roc_curve expects binary labels or probabilities for the positive class
+            # If all_labels is [-1, 0, 1], this might need adjustment depending on which class is considered 'positive'
+            # Assuming class 1 is positive for now.
+            try:
+                # Find index of positive class '1' if possible
+                pos_label_idx = (
+                    all_labels.index(1) if 1 in all_labels else 1
+                )  # Default to index 1 if '1' not found
+                fpr, tpr, _ = roc_curve(
+                    y, y_prob[:, pos_label_idx], pos_label=1
+                )  # Specify pos_label=1
                 metrics["roc_curve"] = {"fpr": fpr.tolist(), "tpr": tpr.tolist()}
+                metrics["roc_auc"] = roc_auc_score(
+                    y, y_prob[:, pos_label_idx]
+                )  # Use prob of positive class
+            except Exception as roc_e:
+                logger.warning(f"Could not calculate binary ROC/AUC: {roc_e}")
 
-                # ROC AUC
-                metrics["roc_auc"] = roc_auc_score(y, y_prob[:, 1])
-
-                # Precision-Recall curve
-                precision, recall, _ = precision_recall_curve(y, y_prob[:, 1])
+            # Precision-Recall curve - Similar label considerations as ROC
+            try:
+                pos_label_idx = all_labels.index(1) if 1 in all_labels else 1
+                precision, recall, _ = precision_recall_curve(
+                    y, y_prob[:, pos_label_idx], pos_label=1
+                )
                 metrics["pr_curve"] = {
                     "precision": precision.tolist(),
                     "recall": recall.tolist(),
                 }
+                metrics["average_precision"] = average_precision_score(
+                    y, y_prob[:, pos_label_idx]
+                )
+            except Exception as pr_e:
+                logger.warning(f"Could not calculate binary PR Curve/AP: {pr_e}")
 
-                # Average precision
-                metrics["average_precision"] = average_precision_score(y, y_prob[:, 1])
-
-                # Log loss
-                metrics["log_loss"] = log_loss(y, y_prob)
+            # Log loss - handles multiclass correctly
+            try:
+                metrics["log_loss"] = log_loss(
+                    y, y_prob, labels=all_labels
+                )  # Provide all labels
+            except Exception as ll_e:
+                logger.warning(f"Could not calculate log loss: {ll_e}")
         else:
             # Multiclass classification
             metrics["precision_macro"] = precision_score(
@@ -201,7 +240,7 @@ def evaluate_classifier(
 
             if y_prob is not None:
                 # Convert y to one-hot encoding for multiclass ROC AUC
-                y_bin = label_binarize(y, classes=unique_classes)
+                y_bin = label_binarize(y, classes=all_labels)
 
                 if (
                     n_classes > 2 and y_bin.shape[1] == y_prob.shape[1]

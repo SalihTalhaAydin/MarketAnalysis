@@ -135,9 +135,10 @@ def engineer_features(
             # Skip labeling if required columns (likely from pandas-ta) are missing
         else:
             # --- Start of original Triple Barrier block ---
-            # Drop NaNs from features before calculating labels to ensure alignment
-            feature_cols = processed_df.columns.difference(["triple_barrier_label"])
-            processed_df.dropna(subset=feature_cols, inplace=True)
+            # NOTE: Removed dropna here. NaNs in features will be handled later or by the model pipeline.
+            #       Dropping rows aggressively here can empty the DataFrame, especially for short test sets.
+            # feature_cols = processed_df.columns.difference(["triple_barrier_label"])
+            # processed_df.dropna(subset=feature_cols, inplace=True)
 
             if processed_df.empty:
                 logger.error("DataFrame empty after dropping NaNs from features")
@@ -155,26 +156,41 @@ def engineer_features(
                 min_return_threshold=0.001,  # Small threshold to filter noise
             )
 
-            # Drop rows where the label could not be calculated
-            initial_rows = len(processed_df)
-            processed_df.dropna(subset=["triple_barrier_label"], inplace=True)
-            rows_dropped = initial_rows - len(processed_df)
+            # NOTE: Commented out dropna for labels. Rows where labels couldn't be calculated
+            #       (often near the end of the series) will have NaN labels.
+            #       These should be handled during model training/prediction (e.g., by not using them).
+            # initial_rows = len(processed_df)
+            # processed_df.dropna(subset=["triple_barrier_label"], inplace=True)
+            # rows_dropped = initial_rows - len(processed_df)
+            #
+            # if rows_dropped > 0:
+            #     logger.info(
+            #         f"Dropped {rows_dropped} rows due to NaNs from Triple Barrier calculation"
+            #     )
 
-            if rows_dropped > 0:
-                logger.info(
-                    f"Dropped {rows_dropped} rows due to NaNs from Triple Barrier calculation"
-                )
-
-            # Convert label to integer type after dropping NaNs
+            # Convert label to integer type, handling potential NaN/inf values
             if "triple_barrier_label" in processed_df.columns:
+                # Ensure the column is numeric first, replacing inf/-inf with NaN
+                processed_df["triple_barrier_label"] = pd.to_numeric(
+                    processed_df["triple_barrier_label"], errors="coerce"
+                )
+                processed_df["triple_barrier_label"] = processed_df[
+                    "triple_barrier_label"
+                ].replace([np.inf, -np.inf], np.nan)
+                # Fill NaN labels with 0 (neutral/undetermined)
+                processed_df["triple_barrier_label"] = processed_df[
+                    "triple_barrier_label"
+                ].fillna(0)
+                # Now convert to int
                 processed_df["triple_barrier_label"] = processed_df[
                     "triple_barrier_label"
                 ].astype(int)
             # --- End of original Triple Barrier block ---
 
-        # Drop NaNs from features before calculating labels to ensure alignment
-        feature_cols = processed_df.columns.difference(["triple_barrier_label"])
-        processed_df.dropna(subset=feature_cols, inplace=True)
+        # NOTE: Commented out dropna for features. Relying on later NaN handling (imputation).
+        #       Dropping rows aggressively here can empty the DataFrame, especially for short test sets.
+        # feature_cols = processed_df.columns.difference(["triple_barrier_label"])
+        # processed_df.dropna(subset=feature_cols, inplace=True)
 
         if processed_df.empty:
             logger.error("DataFrame empty after dropping NaNs from features")

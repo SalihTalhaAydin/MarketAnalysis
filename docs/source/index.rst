@@ -11,26 +11,15 @@ For a quick overview and installation instructions, please see the main `README.
 
 .. toctree::
    :maxdepth: 2
-   :caption: Guides:
 
+   guides/getting_started
    guides/configuration
-
-.. toctree::
-   :maxdepth: 2
-   :caption: Architecture & Design:
 
    architecture/ARCHITECTURAL_PLAN
 
-.. toctree::
-   :maxdepth: 2
-   :caption: Development:
-
-   development/dependency_management
    development/code_quality
-
-.. toctree::
-   :maxdepth: 2
-   :caption: API Reference:
+   development/dependency_management
+   development/debugging_notes
 
    api/modules
 
