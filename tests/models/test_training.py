@@ -5,13 +5,14 @@ import pandas as pd
 import pytest
 from sklearn.compose import ColumnTransformer
 
-# Import sklearn components used internally to check types, etc.
-
 # Import functions to test
 from market_ml_model.models.training import (
     create_feature_pipeline,
     train_classification_model,
 )
+
+# Import sklearn components used internally to check types, etc.
+
 
 # Define path for patching
 TRAINING_PATH = "market_ml_model.models.training"
