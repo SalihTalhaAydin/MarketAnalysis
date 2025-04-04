@@ -284,9 +284,10 @@ def handle_outliers(
                 lower_threshold = valid_data.quantile(lower_bound / 100)
                 upper_threshold = valid_data.quantile(upper_bound / 100)
 
-                # Replace outliers with threshold values
-                result.loc[col_data < lower_threshold, col] = lower_threshold
-                result.loc[col_data > upper_threshold, col] = upper_threshold
+                # Replace outliers with threshold values, casting to original dtype
+                col_dtype = result[col].dtype
+                result.loc[col_data < lower_threshold, col] = lower_threshold.astype(col_dtype)
+                result.loc[col_data > upper_threshold, col] = upper_threshold.astype(col_dtype)
 
     elif method == "clip":
         # Clip values to threshold
