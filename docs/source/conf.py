@@ -67,5 +67,6 @@ autodoc_class_signature = "separated"
 # add_module_names = True
 
 # Add path to the project's source code for autodoc
+# sys.path.insert(0, os.path.abspath(".")) # Removed adding source dir itself
 sys.path.insert(0, os.path.abspath("../../"))  # Point to the project root
 # sys.path.insert(0, os.path.abspath('../../market_ml_model')) # Not needed if root is added
