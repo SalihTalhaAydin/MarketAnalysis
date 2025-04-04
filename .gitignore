@@ -112,7 +112,7 @@ Thumbs.db
 
 # --- Project Specific ---
 # Ignore data files (potentially large or sensitive)
-market_ml_model/data/
+# market_ml_model/data/
 
 # Ignore saved models (if applicable and large)
 # market_ml_model/models/
