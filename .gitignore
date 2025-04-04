@@ -113,8 +113,7 @@ Thumbs.db
 # --- Project Specific ---
 
 # Ignore data cache
-market_ml_model/data/cache/
-
+# market_ml_model/data/cache/  <- Commented out to track cache module files
 # Ignore strategy run results (models, reports, etc.)
 strategy_results/
 
