@@ -4,11 +4,8 @@ import numpy as np
 import pandas as pd
 import pytest
 from sklearn.compose import ColumnTransformer
-from sklearn.impute import SimpleImputer
 
 # Import sklearn components used internally to check types, etc.
-from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import MinMaxScaler, OneHotEncoder, StandardScaler
 
 # Import functions to test
 from market_ml_model.models.training import (

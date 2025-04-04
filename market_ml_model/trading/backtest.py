@@ -4,14 +4,10 @@ Main backtesting functionality for trading strategies.
 
 import logging
 import os
-from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, Optional
 
-import numpy as np
 import pandas as pd
 
-from ..utils.metrics import calculate_returns_metrics
-from .position.position_sizing import calculate_position_size
 
 # Import trade management
 from .simulation import TradeManager
@@ -148,8 +144,8 @@ def backtest_strategy(
 
         # Current market data
         current_close = df.iloc[i]["close"]
-        current_high = df.iloc[i]["high"]
-        current_low = df.iloc[i]["low"]
+        # current_high = df.iloc[i]["high"] # Removed unused variable
+        # current_low = df.iloc[i]["low"] # Removed unused variable
 
         # Previous data for decisions
         prev_signal = df.iloc[i - 1]["prediction"]

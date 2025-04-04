@@ -1,5 +1,4 @@
-import os
-from unittest.mock import ANY, MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pandas as pd
@@ -64,7 +63,7 @@ def mock_trade_manager(mocker):
     mock_instance.capital = 10000.0  # Initial capital
 
     # Patch the class within the backtest module
-    mock_class = mocker.patch(
+    mocker.patch(  # Removed unused variable mock_class
         f"{BACKTEST_PATH}.TradeManager", return_value=mock_instance
     )
     return mock_instance  # Return the instance for assertion checks
@@ -103,7 +102,7 @@ def test_backtest_strategy_basic_run(sample_backtest_data, mock_trade_manager):
 
 def test_backtest_strategy_entry_logic(sample_backtest_data, mock_trade_manager):
     """Verify arguments passed to enter_position."""
-    results = backtest_strategy(
+    backtest_strategy(  # Removed unused variable results
         data_with_predictions=sample_backtest_data,
         atr_multiplier_sl=1.5,
         atr_multiplier_tp=3.0,
@@ -119,7 +118,7 @@ def test_backtest_strategy_entry_logic(sample_backtest_data, mock_trade_manager)
     prev_atr = sample_backtest_data["ATRr_10"].iloc[1]  # Use ATR from index 1
     expected_sl = prev_close - 1.5 * prev_atr
     expected_tp = prev_close + 3.0 * prev_atr
-    expected_entry = prev_close * (1 + 0.001 * 1)  # Slippage for long
+    # expected_entry = prev_close * (1 + 0.001 * 1)  # Removed unused variable
 
     assert (
         call_kwargs["timestamp"] == sample_backtest_data.index[1]
@@ -134,7 +133,7 @@ def test_backtest_strategy_entry_logic(sample_backtest_data, mock_trade_manager)
 
 def test_backtest_strategy_no_dynamic_stops(sample_backtest_data, mock_trade_manager):
     """Test backtest with fixed percentage stops."""
-    results = backtest_strategy(
+    backtest_strategy(  # Removed unused variable results
         data_with_predictions=sample_backtest_data.drop(
             columns=["ATRr_10"]
         ),  # Remove ATR col
@@ -172,7 +171,7 @@ def test_backtest_strategy_save_trades(
     )
 
     with patch("pandas.DataFrame.to_csv") as mock_to_csv:
-        results = backtest_strategy(
+        backtest_strategy(  # Removed unused variable results
             data_with_predictions=sample_backtest_data, output_trades_path=trades_path
         )
         mock_trade_manager.get_trade_summary.assert_called_once()
@@ -188,7 +187,7 @@ def test_backtest_strategy_save_report(
 ):
     """Test saving detailed report."""
     output_dir = "/fake/report_dir"
-    results = backtest_strategy(
+    backtest_strategy(  # Removed unused variable results
         data_with_predictions=sample_backtest_data,
         output_dir=output_dir,
         save_detailed_report=True,

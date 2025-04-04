@@ -5,7 +5,6 @@ Position sizing algorithms.
 import logging
 from typing import Optional
 
-import numpy as np
 
 # Setup logging
 logger = logging.getLogger(__name__)

@@ -44,6 +44,33 @@ try:
 except ImportError:
     logger.warning("SHAP not installed. Advanced feature importance not available.")
     SHAP_AVAILABLE = False
+# Try to import XGBoost
+try:
+    import xgboost as xgb
+
+    XGBOOST_AVAILABLE = True
+except ImportError:
+    XGBOOST_AVAILABLE = False
+    xgb = None
+
+# Try to import LightGBM
+try:
+    import lightgbm as lgb
+
+    LIGHTGBM_AVAILABLE = True
+except ImportError:
+    LIGHTGBM_AVAILABLE = False
+    lgb = None
+
+# Try to import CatBoost
+try:
+    from catboost import CatBoostClassifier
+
+    CATBOOST_AVAILABLE = True
+except ImportError:
+    CATBOOST_AVAILABLE = False
+    CatBoostClassifier = None  # Define as None if not available
+
 
 # Try to import visualization libraries # Added block
 try:
@@ -110,7 +137,10 @@ def evaluate_classifier(
 
         # Classification report
         metrics["classification_report"] = classification_report(
-            y, y_pred, output_dict=True, zero_division=0  # Added zero_division
+            y,
+            y_pred,
+            output_dict=True,
+            zero_division=0,  # Added zero_division
         )
 
         # Confusion matrix
@@ -601,7 +631,10 @@ def generate_model_report(
     # Feature importance
     logger.info("Computing feature importance...")
     importance_df = compute_feature_importance(
-        model, X_train, y_train, method="built_in"  # Default to built-in first
+        model,
+        X_train,
+        y_train,
+        method="built_in",  # Default to built-in first
     )
     if importance_df.empty:  # Try permutation if built-in fails
         importance_df = compute_feature_importance(

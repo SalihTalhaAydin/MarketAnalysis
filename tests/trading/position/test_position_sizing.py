@@ -1,6 +1,5 @@
 from unittest.mock import patch
 
-import numpy as np
 import pytest
 
 # Import the function to test
@@ -84,7 +83,7 @@ def test_kelly_sizing_estimated():
     # Payoff = 2.0 (default)
     # Kelly F = 0.9 - (1 - 0.9) / 2.0 = 0.9 - 0.1 / 2.0 = 0.9 - 0.05 = 0.85
     # Half Kelly = 0.85 * 0.5 = 0.425
-    expected_kelly = 0.425
+    # expected_kelly = 0.425 # Removed unused variable
     # Volatility scalar = 1.0
     # Expected size = min(0.425 * 1.0, MAX_CAPITAL) = min(0.425, 0.25) = 0.25
     size = calculate_position_size(
@@ -104,7 +103,7 @@ def test_kelly_sizing_estimated_weak_signal():
     # Payoff = 2.0 (default)
     # Kelly F = 0.6 - (1 - 0.6) / 2.0 = 0.6 - 0.4 / 2.0 = 0.6 - 0.2 = 0.4
     # Half Kelly = 0.4 * 0.5 = 0.2
-    expected_kelly = 0.2
+    # expected_kelly = 0.2 # Removed unused variable
     # Volatility scalar = 1.0
     # Expected size = min(0.2 * 1.0, MAX_CAPITAL) = min(0.2, 0.25) = 0.2
     size = calculate_position_size(
@@ -114,16 +113,16 @@ def test_kelly_sizing_estimated_weak_signal():
         use_kelly=True,
         max_capital_per_trade=MAX_CAPITAL,
     )
-    assert size == pytest.approx(expected_kelly)
+    assert size == pytest.approx(0.2)  # Updated assertion after removing variable
 
 
 def test_kelly_sizing_provided_stats():
     """Test Kelly sizing using provided win rate and payoff."""
     win_rate = 0.65
     payoff = 2.5
-    expected_kelly = calculate_kelly(
-        win_rate, payoff
-    )  # 0.65 - (0.35 / 2.5) = 0.65 - 0.14 = 0.51 -> Half = 0.255
+    # expected_kelly = calculate_kelly( # Removed unused variable
+    #     win_rate, payoff
+    # )  # 0.65 - (0.35 / 2.5) = 0.65 - 0.14 = 0.51 -> Half = 0.255
     # Volatility scalar = 1.0
     # Expected size = min(0.255 * 1.0, MAX_CAPITAL) = min(0.255, 0.25) = 0.25
     size = calculate_position_size(
@@ -142,7 +141,7 @@ def test_kelly_sizing_high_volatility():
     """Test Kelly sizing adjusted for high volatility."""
     win_rate = 0.65
     payoff = 2.5
-    expected_kelly = calculate_kelly(win_rate, payoff)  # 0.255
+    # expected_kelly = calculate_kelly(win_rate, payoff)  # 0.255 # Removed unused variable
     # Volatility scalar = TARGET_VOL / VOLATILITY_HIGH = 0.01 / 0.02 = 0.5
     # Expected size = min(0.255 * 0.5, MAX_CAPITAL) = min(0.1275, 0.25) = 0.1275
     size = calculate_position_size(
@@ -161,7 +160,7 @@ def test_kelly_sizing_low_volatility():
     """Test Kelly sizing adjusted for low volatility (capped)."""
     win_rate = 0.65
     payoff = 2.5
-    expected_kelly = calculate_kelly(win_rate, payoff)  # 0.255
+    # expected_kelly = calculate_kelly(win_rate, payoff)  # 0.255 # Removed unused variable
     # Volatility scalar = TARGET_VOL / VOLATILITY_LOW = 0.01 / 0.005 = 2.0 (capped at 2.0)
     # Expected size = min(0.255 * 2.0, MAX_CAPITAL) = min(0.51, 0.25) = 0.25
     size = calculate_position_size(

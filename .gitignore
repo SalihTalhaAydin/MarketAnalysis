@@ -119,3 +119,7 @@ strategy_results/
 
 # Ignore general log files
 *.log
+
+# Generated dependency lock files
+requirements.txt
+requirements-dev.txt

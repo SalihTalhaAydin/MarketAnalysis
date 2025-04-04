@@ -5,7 +5,6 @@ Feature selection techniques for preprocessing model inputs.
 import logging
 from typing import Dict, List, Optional, Tuple
 
-import numpy as np
 import pandas as pd
 
 # Setup logging
@@ -17,10 +16,8 @@ try:
     from sklearn.ensemble import RandomForestClassifier
     from sklearn.feature_selection import (
         RFE,
-        RFECV,
         SelectFromModel,
         SelectKBest,
-        f_classif,
         mutual_info_classif,
     )
     from sklearn.linear_model import LogisticRegression

@@ -1,5 +1,5 @@
 import sys
-from unittest.mock import ANY, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from sklearn.ensemble import (
@@ -172,12 +172,12 @@ def test_create_model_types(model_type, expected_class_path):
         with patch.dict(f"{FACTORY_PATH}.MODEL_FACTORY", factory_dict_mock, clear=True):
             # Patch the VotingClassifier class itself to check instantiation
             with patch(expected_class_path) as mock_class:
-                model = create_model(model_type)  # Call the main factory function
+                create_model(model_type)  # Call the main factory function
                 mock_class.assert_called_once()  # Check VotingClassifier called
     else:
         # Patch the specific model class being created
         with patch(expected_class_path) as mock_class:
-            model = create_model(model_type)
+            create_model(model_type)
             # For XGBoost/LightGBM/CatBoost, check the call on the mocked module
             if model_type == "xgboost":
                 mock_class.assert_called_once()  # Checks XGBClassifier on the mocked xgb module
@@ -195,7 +195,7 @@ def test_create_model_custom_params_rf():
     """Test passing custom parameters to RandomForest."""
     custom_params = {"n_estimators": 555, "max_depth": 15}
     with patch(f"{FACTORY_PATH}.RandomForestClassifier") as mock_rf:
-        model = create_model("random_forest", params=custom_params)
+        create_model("random_forest", params=custom_params)
         # Check if RF was called with custom params overriding defaults
         call_args, call_kwargs = mock_rf.call_args
         assert call_kwargs["n_estimators"] == 555
@@ -228,7 +228,7 @@ def test_create_model_custom_params_ensemble(mock_voting_class):  # Renamed mock
     # Patch the global factory dict *before* calling create_model
     with patch.dict(f"{FACTORY_PATH}.MODEL_FACTORY", factory_dict_mock, clear=True):
         # Call the main create_model function for 'ensemble'
-        model = create_model("ensemble", params=custom_params)
+        create_model("ensemble", params=custom_params)
 
         # Check sub-model factories were called with correct params
         factory_dict_mock["logistic_regression"].assert_called_once_with({"C": 10})

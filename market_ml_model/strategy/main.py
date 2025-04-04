@@ -16,17 +16,13 @@ import concurrent.futures
 import json
 import logging
 import os
-import time
 import uuid
 import warnings
-from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Tuple, Union
+from datetime import datetime
+from typing import Any, Dict, List, Optional, Tuple
 
-import joblib
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import seaborn as sns
 
 # Setup logging first
 logging.basicConfig(
@@ -39,6 +35,18 @@ logging.basicConfig(
     ],
 )
 logger = logging.getLogger(__name__)
+
+# Try importing visualization libraries
+try:
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+
+    VISUALIZATION_AVAILABLE = True
+except ImportError:
+    logger.warning("Matplotlib/Seaborn not installed. Visualization unavailable.")
+    VISUALIZATION_AVAILABLE = False
+    plt = None
+    sns = None
 
 
 # Import refactored components using relative paths
@@ -55,14 +63,15 @@ try:
     from ..models.prediction import (
         PredictionManager,
         SignalGenerator,
+        get_confidence_levels,  # Added import
         load_model,
         predict_with_model,
+        predict_with_threshold,  # Added import
     )
 
     # Model Training & Prediction
     from ..models.training import (  # Added pipeline creation
-        create_feature_pipeline,
-        train_classification_model,
+        train_classification_model,  # Removed unused create_feature_pipeline
     )
 
     # Backtesting & Simulation
@@ -756,7 +765,7 @@ class MarketRegimeDetector:
                 ax1.set_ylabel("Regime Value (if no price)")  # Adjust label if no price
 
             # Plot regimes as steps
-            colors = plt.cm.viridis(np.linspace(0, 1, self.n_regimes))
+            # colors = plt.cm.viridis(np.linspace(0, 1, self.n_regimes)) # Removed unused variable
             unique_regimes = sorted(regime_df["regime"].unique())
 
             # Use step plot for regimes
@@ -822,16 +831,16 @@ class EnhancedTradingStrategy:
             if config.model_config.regime_adaptation_enabled
             else None
         )  # Example: 3 regimes
-        self.models: Dict[str, str] = (
-            {}
-        )  # Stores paths to saved models (asset_symbol[_regime_X] -> path)
+        self.models: Dict[
+            str, str
+        ] = {}  # Stores paths to saved models (asset_symbol[_regime_X] -> path)
         self.predictors: Dict[str, ModelPredictorBase] = {}  # Stores loaded predictors
-        self.signal_generators: Dict[str, SignalGenerator] = (
-            {}
-        )  # Stores signal generators per asset/model_key
-        self.results: Dict[str, Any] = (
-            {}
-        )  # Stores results per asset or walk-forward step
+        self.signal_generators: Dict[
+            str, SignalGenerator
+        ] = {}  # Stores signal generators per asset/model_key
+        self.results: Dict[
+            str, Any
+        ] = {}  # Stores results per asset or walk-forward step
 
         # Set logging level based on debug mode
         log_level = logging.DEBUG if config.debug_mode else logging.INFO
@@ -852,7 +861,7 @@ class EnhancedTradingStrategy:
             loader = DataLoader(config=loader_config)
             logger.info(f"DataLoader initialized with cache directory: {cache_dir}")
             return loader
-        except Exception as e:
+        except Exception:
             logger.exception("Error initializing DataLoader")
             return None
 
@@ -1261,15 +1270,15 @@ class EnhancedTradingStrategy:
             # Need to know which predictor was actually used (base or regime-specific)
             # This logic should ideally be stored or passed from generate_predictions
             # Assuming for now we can infer it or use a default/base predictor's class names
-            predictor_key_base = os.path.join(
-                self.config.output_dir, "models", asset_config.symbol
-            )  # Path logic needs refinement
-            predictor_key_regime = os.path.join(
-                self.config.output_dir,
-                "models",
-                asset_config.symbol,
-                f"regime_{regime}",
-            )
+            # predictor_key_base = os.path.join( # Removed unused variable
+            #     self.config.output_dir, "models", asset_config.symbol
+            # )  # Path logic needs refinement
+            # predictor_key_regime = os.path.join( # Removed unused variable
+            #     self.config.output_dir,
+            #     "models",
+            #     asset_config.symbol,
+            #     f"regime_{regime}",
+            # ) # Removed orphaned arguments
             # This path logic is flawed, need the actual path used in generate_predictions
             # For now, fallback to default class names if predictor not found
             predictor = self.predictors.get(regime_key) or self.predictors.get(
@@ -1389,7 +1398,7 @@ class EnhancedTradingStrategy:
                     f"run_{datetime.now().strftime('%Y%m%d%H%M%S')}",
                 )
 
-            trades_path = os.path.join(backtest_output_dir, f"trades.csv")
+            trades_path = os.path.join(backtest_output_dir, "trades.csv")
 
             performance_summary = backtest_strategy(
                 data_with_predictions=backtest_data,
@@ -1520,7 +1529,7 @@ class EnhancedTradingStrategy:
                 ) * wf_config.retrain_frequency + 1
                 last_fold_id = f"fold_{last_retrain_step}"
                 # Construct path (assuming no regimes for WF simplicity now)
-                model_key = asset_config.symbol
+                # model_key = asset_config.symbol # Removed unused variable
                 model_sub_dir = asset_config.symbol
                 model_base_dir = os.path.join(
                     self.config.output_dir, "models", model_sub_dir

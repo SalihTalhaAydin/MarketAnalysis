@@ -341,7 +341,7 @@ def calculate_volatility_features(df: pd.DataFrame) -> Dict[str, pd.Series]:
     )
 
     # Volatility of volatility (meta-volatility)
-    if f"volatility_20" in features:
+    if "volatility_20" in features:
         features["vol_of_vol_20"] = features["volatility_20"].rolling(20).std()
 
     # Realized volatility calculation using Parkinson's formula (high-low range based)

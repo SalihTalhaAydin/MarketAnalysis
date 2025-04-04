@@ -1,0 +1,123 @@
+# Example Strategy Configuration for MarketAnalysis Framework
+# This file demonstrates how to configure a trading strategy.
+
+# General Strategy Settings
+strategy_name: "Example_Momentum_Strategy"
+description: "A sample strategy using RSI and SMA features with a RandomForest model."
+log_level: "INFO" # Options: DEBUG, INFO, WARNING, ERROR, CRITICAL
+results_dir: "strategy_results" # Directory to save backtest results, plots, etc.
+
+# Asset Configuration (List of assets to trade)
+assets:
+  - symbol: "AAPL" # Ticker symbol (e.g., from yfinance)
+    start_date: "2018-01-01"
+    end_date: "2023-12-31"
+    data_source: "yfinance" # Or 'ccxt', 'alpha_vantage', etc.
+    # Optional: Specify exchange if needed (e.g., for CCXT)
+    # exchange: "binance"
+    # Optional: Specify timeframe if needed
+    # timeframe: "1d" # e.g., '1m', '5m', '1h', '1d'
+
+# Feature Engineering Configuration
+features:
+  # Technical Indicators (using pandas-ta or ta library conventions)
+  technical_indicators:
+    - indicator: "rsi"
+      length: 14
+    - indicator: "sma"
+      length: 20
+    - indicator: "sma"
+      length: 50
+    - indicator: "atr"
+      length: 14
+    # Add more indicators as needed...
+
+  # Target Labeling Configuration (e.g., Triple Barrier Method)
+  labeling:
+    method: "triple_barrier" # Example method
+    params:
+      pt_sl: [1, 1] # Profit Take / Stop Loss multiples of ATR/volatility
+      holding_period: 10 # Max holding period in bars
+      min_return: 0.001 # Minimum return threshold for profit take/stop loss
+      volatility_lookback: 20 # Lookback period for volatility calculation (e.g., ATR)
+      volatility_target: 0.01 # Target volatility (optional, depends on method)
+
+  # Feature Scaling/Normalization (optional)
+  scaling:
+    method: "StandardScaler" # e.g., "StandardScaler", "MinMaxScaler", null
+    apply_to: ["rsi", "sma_20", "sma_50"] # List of features to scale, or 'all'
+
+# Model Configuration
+model:
+  type: "RandomForestClassifier" # e.g., "RandomForestClassifier", "XGBClassifier", "LGBMClassifier"
+  params: # Parameters specific to the chosen model type
+    n_estimators: 100
+    max_depth: 10
+    min_samples_leaf: 5
+    random_state: 42
+    class_weight: "balanced" # Handle class imbalance
+    # Add other relevant scikit-learn/xgboost/etc. parameters
+
+  # Feature Selection (optional)
+  feature_selection:
+    method: null # e.g., "SelectKBest", "RFE", null
+    params: {} # Parameters for the selection method
+
+  # Hyperparameter Optimization (optional)
+  hyperopt:
+    enabled: false
+    method: "optuna" # e.g., "optuna", "hyperopt"
+    n_trials: 50
+    metric: "accuracy" # Metric to optimize (e.g., 'accuracy', 'f1', 'roc_auc')
+    direction: "maximize" # 'maximize' or 'minimize'
+    # Define search space if needed (specific to optuna/hyperopt)
+    search_space: {}
+
+# Walk-Forward Validation Configuration
+walk_forward:
+  enabled: true
+  train_window_size: 252 # Number of periods (e.g., days) for initial training
+  test_window_size: 63 # Number of periods for testing (out-of-sample)
+  step_size: 21 # How many periods to step forward each iteration
+  retrain_every_step: true # Whether to retrain the model at each step
+  purge_window_size: 5 # Gap between train and test to prevent lookahead bias
+  expanding_window: false # Use expanding window instead of sliding window for training
+
+# Backtesting / Trading Simulation Configuration
+trading:
+  initial_capital: 100000.0
+  commission_bps: 2.0 # Commission in basis points (e.g., 2.0 = 0.02%)
+  slippage_bps: 1.0 # Slippage estimate in basis points
+  position_sizing:
+    method: "fixed_fractional" # e.g., "fixed_fractional", "fixed_amount"
+    params:
+      fraction: 0.10 # Fraction of capital to risk per trade
+      # amount: 1000 # Fixed amount per trade (if using 'fixed_amount')
+  stop_loss:
+    method: "atr" # e.g., "atr", "fixed_percentage", null
+    params:
+      multiplier: 2.0 # ATR multiplier
+      # percentage: 0.05 # Fixed percentage (if using 'fixed_percentage')
+  take_profit:
+    method: "atr" # e.g., "atr", "fixed_percentage", null
+    params:
+      multiplier: 3.0 # ATR multiplier
+      # percentage: 0.10 # Fixed percentage (if using 'fixed_percentage')
+
+# Market Regime Detection (Optional)
+market_regime:
+  enabled: false
+  method: "volatility_clustering" # e.g., "volatility_clustering", "rule_based_sma"
+  params: # Parameters specific to the chosen method
+    # For volatility_clustering:
+    n_clusters: 3
+    volatility_indicator: "atr"
+    volatility_period: 20
+    # For rule_based_sma:
+    # short_sma: 20
+    # long_sma: 50
+  # Define how regimes affect trading (optional)
+  # regime_actions:
+  #   regime_0: "trade_long_only"
+  #   regime_1: "trade_short_only"
+  #   regime_2: "no_trade"

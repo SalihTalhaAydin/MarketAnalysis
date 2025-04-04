@@ -1,5 +1,4 @@
-from datetime import datetime
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
@@ -256,8 +255,8 @@ def test_align_data_empty_list():
 def test_detect_outliers_zscore(sample_df_for_outliers):
     """Test outlier detection using z-score."""
     outliers = detect_outliers(sample_df_for_outliers, method="zscore", threshold=2.0)
-    assert outliers.loc["2023-01-08", "value1"] == True  # 100 is outlier
-    assert outliers.loc["2023-01-06", "value2"] == True  # -50 is outlier
+    assert outliers.loc["2023-01-08", "value1"]  # 100 is outlier
+    assert outliers.loc["2023-01-06", "value2"]  # -50 is outlier
     assert not outliers["constant"].any()  # Constant column has no outliers
     assert not outliers["string"].any()  # String column ignored
     assert outliers.sum().sum() == 2  # Total outliers detected
@@ -266,8 +265,8 @@ def test_detect_outliers_zscore(sample_df_for_outliers):
 def test_detect_outliers_iqr(sample_df_for_outliers):
     """Test outlier detection using IQR."""
     outliers = detect_outliers(sample_df_for_outliers, method="iqr", threshold=1.5)
-    assert outliers.loc["2023-01-08", "value1"] == True  # 100 is outlier
-    assert outliers.loc["2023-01-06", "value2"] == True  # -50 is outlier
+    assert outliers.loc["2023-01-08", "value1"]  # 100 is outlier
+    assert outliers.loc["2023-01-06", "value2"]  # -50 is outlier
     assert not outliers["constant"].any()
     assert not outliers["string"].any()
     assert outliers.sum().sum() == 2
@@ -279,9 +278,9 @@ def test_detect_outliers_percentile(sample_df_for_outliers):
     outliers = detect_outliers(
         sample_df_for_outliers, method="percentile", threshold=10
     )
-    assert outliers.loc["2023-01-08", "value1"] == True  # 100 is outlier (highest)
-    assert outliers.loc["2023-01-07", "value1"] == True  # 9 is outlier (lowest)
-    assert outliers.loc["2023-01-06", "value2"] == True  # -50 is outlier (lowest)
+    assert outliers.loc["2023-01-08", "value1"]  # 100 is outlier (highest)
+    assert outliers.loc["2023-01-07", "value1"]  # 9 is outlier (lowest)
+    assert outliers.loc["2023-01-06", "value2"]  # -50 is outlier (lowest)
     # Depending on exact percentile calculation, highest value2 might also be outlier
     assert not outliers["constant"].any()
     assert not outliers["string"].any()
@@ -294,7 +293,7 @@ def test_detect_outliers_specific_columns(sample_df_for_outliers):
     outliers = detect_outliers(
         sample_df_for_outliers, columns=["value1"], method="zscore", threshold=2.0
     )
-    assert outliers.loc["2023-01-08", "value1"] == True
+    assert outliers.loc["2023-01-08", "value1"]
     assert not outliers["value2"].any()  # value2 should not have been checked
     assert not outliers["constant"].any()
     assert not outliers["string"].any()
@@ -347,11 +346,11 @@ def test_handle_outliers_winsorize(sample_df_for_outliers, outlier_mask):
     )
     # Calculate expected bounds based on non-outlier data
     valid_v1 = sample_df_for_outliers.loc[~outlier_mask["value1"], "value1"]
-    lower_v1 = valid_v1.quantile(0.05)
+    # lower_v1 = valid_v1.quantile(0.05) # Removed unused variable
     upper_v1 = valid_v1.quantile(0.95)
     valid_v2 = sample_df_for_outliers.loc[~outlier_mask["value2"], "value2"]
     lower_v2 = valid_v2.quantile(0.05)
-    upper_v2 = valid_v2.quantile(0.95)
+    # upper_v2 = valid_v2.quantile(0.95) # Removed unused variable
 
     # Check if outliers were replaced by bounds
     assert handled_df.loc["2023-01-08", "value1"] == upper_v1
@@ -375,9 +374,9 @@ def test_handle_outliers_clip(sample_df_for_outliers, outlier_mask):
     handled_df = handle_outliers(sample_df_for_outliers, outlier_mask, method="clip")
     # Calculate expected bounds based on non-outlier data min/max
     valid_v1 = sample_df_for_outliers.loc[~outlier_mask["value1"], "value1"]
-    min_v1, max_v1 = valid_v1.min(), valid_v1.max()
+    max_v1 = valid_v1.max()  # Adjusted assignment
     valid_v2 = sample_df_for_outliers.loc[~outlier_mask["value2"], "value2"]
-    min_v2, max_v2 = valid_v2.min(), valid_v2.max()
+    min_v2 = valid_v2.min()  # Adjusted assignment
 
     assert handled_df.loc["2023-01-08", "value1"] == max_v1
     assert handled_df.loc["2023-01-06", "value2"] == min_v2

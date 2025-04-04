@@ -13,6 +13,10 @@ setup(
         "scikit-learn>=1.2.0",
         "matplotlib>=3.6.0",
         "seaborn>=0.12.0",
+        "setuptools>=65.0.0",  # Added from requirements.txt
+        "pandas-datareader>=0.10.0",  # Added from requirements.txt
+        "scipy>=1.9.0",  # Added from requirements.txt
+        "statsmodels>=0.13.0",  # Added from requirements.txt
     ],
     extras_require={
         "full": [
@@ -34,6 +38,9 @@ setup(
             "black>=23.0.0",  # Added black
             "isort>=5.10.0",  # Added isort
             "pytest-mock>=3.10.0",  # Added for mocker fixture
+            "pip-tools>=6.10.0",  # Added for dependency locking
+            "pre-commit>=2.20.0",  # Added for pre-commit hooks
+            "ruff>=0.1.0",  # Added for fast linting/formatting
         ],
     },
     author="Your Name",
