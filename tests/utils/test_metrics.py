@@ -1,3 +1,5 @@
+# pylint: disable=redefined-outer-name
+"""Tests for the metrics calculation utility functions."""
 # tests/utils/test_metrics.py
 import numpy as np
 import pandas as pd
