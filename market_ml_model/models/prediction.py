@@ -21,6 +21,7 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 try:
     from sklearn.calibration import CalibratedClassifierCV
     from sklearn.exceptions import NotFittedError
+
     # Removed Pipeline, StandardScaler, label_binarize
 
     SKLEARN_AVAILABLE = True
@@ -43,6 +44,7 @@ except ImportError:
 # Try importing visualization libraries
 try:
     import matplotlib.pyplot as plt
+
     # Removed seaborn import
 
     VISUALIZATION_AVAILABLE = True
@@ -1279,16 +1281,16 @@ class SignalGenerator:
         # --- Apply Signal Generation Logic ---
         if self.signal_type == "threshold":
             signals.loc[prob_pos >= self.threshold, "raw_signal"] = 1
-            signals.loc[
-                prob_neg >= self.threshold, "raw_signal"
-            ] = -1  # Assumes neg prob available
+            signals.loc[prob_neg >= self.threshold, "raw_signal"] = (
+                -1
+            )  # Assumes neg prob available
             # Refine for binary case where only pos prob matters vs threshold
             if probabilities.shape[1] == 2:
                 signals["raw_signal"] = 0
                 signals.loc[prob_pos >= self.threshold, "raw_signal"] = 1
-                signals.loc[
-                    prob_pos <= (1 - self.threshold), "raw_signal"
-                ] = -1  # Signal short if prob_pos is low
+                signals.loc[prob_pos <= (1 - self.threshold), "raw_signal"] = (
+                    -1
+                )  # Signal short if prob_pos is low
 
         elif self.signal_type == "probability_weighted":
             # Example: Signal = 1 if prob_pos > 0.55, -1 if prob_pos < 0.45
@@ -1425,9 +1427,9 @@ class SignalGenerator:
                 if i - last_signal_idx > self.cooling_period:
                     last_signal_idx = i  # Allow signal, update last signal time
                 else:
-                    signals["signal"].iloc[i] = (
-                        0  # Suppress signal due to cooling period
-                    )
+                    signals["signal"].iloc[
+                        i
+                    ] = 0  # Suppress signal due to cooling period
         logger.info(f"Applied cooling period of {self.cooling_period} bars.")
 
     def plot_signal_history(

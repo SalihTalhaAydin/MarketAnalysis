@@ -13,9 +13,9 @@ import joblib  # Moved up
 import pandas as pd  # Moved up
 
 from .evaluation.metrics import (
-    compute_feature_importance,
+    compute_feature_importance,  # Moved up
     evaluate_classifier,
-)  # Moved up
+)
 from .factory.model_factory import create_model  # Moved up
 from .feature_selection import select_features  # Moved up
 from .optimization.hyperparameters import optimize_hyperparameters  # Moved up

@@ -5,8 +5,6 @@ import numpy as np  # Add numpy import
 import pandas as pd  # Add pandas import
 import pytest
 
-# Import sklearn components for mocking specs
-
 # Import config classes and detector to test
 from market_ml_model.strategy.main import (  # Import the main strategy class; Import the class to test
     AssetConfig,
@@ -17,6 +15,9 @@ from market_ml_model.strategy.main import (  # Import the main strategy class; I
     StrategyConfig,
     WalkForwardConfig,
 )
+
+# Import sklearn components for mocking specs
+
 
 # Define path for patching within the strategy.main module
 STRATEGY_PATH = "market_ml_model.strategy.main"

@@ -14,7 +14,6 @@ The implementation supports multiple assets, timeframes, and strategies.
 
 import concurrent.futures
 import json
-import yaml  # Added YAML import
 import logging
 import os
 import uuid
@@ -24,6 +23,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
+import yaml  # Added YAML import
 
 # Setup logging first
 logging.basicConfig(
@@ -61,19 +61,19 @@ try:
         generate_model_report,
     )  # Added report generation
     from ..models.prediction import ModelPredictorBase  # Added load_model
+    from ..models.prediction import get_confidence_levels  # Added import
+    from ..models.prediction import predict_with_threshold  # Added import
     from ..models.prediction import (
         PredictionManager,
         SignalGenerator,
-        get_confidence_levels,  # Added import
         load_model,
         predict_with_model,
-        predict_with_threshold,  # Added import
     )
 
     # Model Training & Prediction
-    from ..models.training import (  # Added pipeline creation
-        train_classification_model,  # Removed unused create_feature_pipeline
-    )
+    from ..models.training import (
+        train_classification_model,
+    )  # Added pipeline creation; Removed unused create_feature_pipeline
 
     # Backtesting & Simulation
     from ..trading.backtest import backtest_strategy
@@ -844,16 +844,16 @@ class EnhancedTradingStrategy:
             if config.model_config.regime_adaptation_enabled
             else None
         )  # Example: 3 regimes
-        self.models: Dict[
-            str, str
-        ] = {}  # Stores paths to saved models (asset_symbol[_regime_X] -> path)
+        self.models: Dict[str, str] = (
+            {}
+        )  # Stores paths to saved models (asset_symbol[_regime_X] -> path)
         self.predictors: Dict[str, ModelPredictorBase] = {}  # Stores loaded predictors
-        self.signal_generators: Dict[
-            str, SignalGenerator
-        ] = {}  # Stores signal generators per asset/model_key
-        self.results: Dict[
-            str, Any
-        ] = {}  # Stores results per asset or walk-forward step
+        self.signal_generators: Dict[str, SignalGenerator] = (
+            {}
+        )  # Stores signal generators per asset/model_key
+        self.results: Dict[str, Any] = (
+            {}
+        )  # Stores results per asset or walk-forward step
 
         # Set logging level based on debug mode
         log_level = logging.DEBUG if config.debug_mode else logging.INFO

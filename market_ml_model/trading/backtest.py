@@ -8,7 +8,6 @@ from typing import Any, Dict, Optional
 
 import pandas as pd
 
-
 # Import trade management
 from .simulation import TradeManager
 

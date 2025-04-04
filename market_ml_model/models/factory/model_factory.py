@@ -58,10 +58,7 @@ except ImportError:
 # Try to import TensorFlow/Keras
 try:
     from tensorflow.keras.layers import LSTM  # Updated import block
-    from tensorflow.keras.layers import (
-        Dense,
-        Dropout,
-    )
+    from tensorflow.keras.layers import Dense, Dropout
     from tensorflow.keras.models import Sequential
     from tensorflow.keras.optimizers import Adam
 
