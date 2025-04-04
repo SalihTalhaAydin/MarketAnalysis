@@ -286,8 +286,12 @@ def handle_outliers(
 
                 # Replace outliers with threshold values, casting to original dtype
                 col_dtype = result[col].dtype
-                result.loc[col_data < lower_threshold, col] = lower_threshold.astype(col_dtype)
-                result.loc[col_data > upper_threshold, col] = upper_threshold.astype(col_dtype)
+                result.loc[col_data < lower_threshold, col] = lower_threshold.astype(
+                    col_dtype
+                )
+                result.loc[col_data > upper_threshold, col] = upper_threshold.astype(
+                    col_dtype
+                )
 
     elif method == "clip":
         # Clip values to threshold
