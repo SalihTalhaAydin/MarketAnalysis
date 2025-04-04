@@ -25,7 +25,7 @@ from .sources.yahoo import load_from_yahoo
 from .transformations import align_data, detect_outliers, handle_outliers, resample_data
 
 # Import cache module
-# from .cache.cache import DataCache # Commented out due to missing module/file
+from .cache.cache import DataCache
 
 
 # Setup logging
