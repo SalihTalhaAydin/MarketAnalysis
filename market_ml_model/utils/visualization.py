@@ -4,10 +4,10 @@ Visualization utilities for backtesting and analysis.
 
 import logging
 from typing import Optional, Tuple
-from matplotlib.axes import Axes  # Import Axes
 
 import numpy as np
 import pandas as pd
+from matplotlib.axes import Axes  # Import Axes
 
 # Setup logging
 logger = logging.getLogger(__name__)
