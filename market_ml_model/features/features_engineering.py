@@ -3,7 +3,7 @@ Main feature engineering orchestration module.
 """
 
 import logging
-from typing import Dict, Any
+from typing import Any, Dict
 
 import numpy as np
 import pandas as pd
@@ -12,11 +12,11 @@ from .labeling.triple_barrier import get_triple_barrier_labels
 
 # Import components
 from .technical.indicators import (
-    calculate_technical_indicators,
-    calculate_volatility_features,
+    calculate_fractal_features,
     calculate_market_regime_features,
     calculate_momentum_features,
-    calculate_fractal_features,
+    calculate_technical_indicators,
+    calculate_volatility_features,
 )
 
 # Setup logging

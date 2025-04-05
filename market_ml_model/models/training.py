@@ -27,10 +27,9 @@ try:
     from sklearn.impute import SimpleImputer
     from sklearn.model_selection import train_test_split
     from sklearn.pipeline import Pipeline
-    from sklearn.preprocessing import (
+    from sklearn.preprocessing import (  # QuantileTransformer, # Removed unused import
         MinMaxScaler,
         OneHotEncoder,
-        # QuantileTransformer, # Removed unused import
         RobustScaler,
         StandardScaler,
     )

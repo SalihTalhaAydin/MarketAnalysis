@@ -1142,16 +1142,16 @@ class EnhancedTradingStrategy:
                 )
                 self.market_regime_enabled = False  # Disable if dependencies missing
         # )
-        self.models: Dict[
-            str, str
-        ] = {}  # Stores paths to saved models (asset_symbol[_regime_X] -> path)
+        self.models: Dict[str, str] = (
+            {}
+        )  # Stores paths to saved models (asset_symbol[_regime_X] -> path)
         self.predictors: Dict[str, ModelPredictorBase] = {}  # Stores loaded predictors
-        self.signal_generators: Dict[
-            str, SignalGenerator
-        ] = {}  # Stores signal generators per asset/model_key
-        self.results: Dict[
-            str, Any
-        ] = {}  # Stores results per asset or walk-forward step
+        self.signal_generators: Dict[str, SignalGenerator] = (
+            {}
+        )  # Stores signal generators per asset/model_key
+        self.results: Dict[str, Any] = (
+            {}
+        )  # Stores results per asset or walk-forward step
 
         # Set logging level based on debug mode
         log_level = logging.DEBUG if config.debug_mode else logging.INFO
@@ -2743,9 +2743,9 @@ class EnhancedTradingStrategy:
             return {
                 "backtest_summary": backtest_results,
                 "model_path": model_path,
-                "detected_regime": int(current_regime)
-                if current_regime is not None
-                else None,
+                "detected_regime": (
+                    int(current_regime) if current_regime is not None else None
+                ),
             }  # Ensure regime is standard int
 
         if use_parallel:
