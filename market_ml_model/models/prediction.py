@@ -1410,9 +1410,9 @@ class SignalGenerator:
                 if i - last_signal_idx > self.cooling_period:
                     last_signal_idx = i  # Allow signal, update last signal time
                 else:
-                    signals["signal"].iloc[i] = (
-                        0  # Suppress signal due to cooling period
-                    )
+                    signals["signal"].iloc[
+                        i
+                    ] = 0  # Suppress signal due to cooling period
         logger.info(f"Applied cooling period of {self.cooling_period} bars.")
 
     def plot_signal_history(
