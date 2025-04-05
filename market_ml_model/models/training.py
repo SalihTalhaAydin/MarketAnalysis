@@ -12,10 +12,8 @@ from typing import Any, Dict, List, Optional, Tuple
 import joblib  # Moved up
 import pandas as pd  # Moved up
 
-from .evaluation.metrics import (
-    compute_feature_importance,  # Moved up
-    evaluate_classifier,
-)
+from .evaluation.metrics import compute_feature_importance  # Moved up
+from .evaluation.metrics import evaluate_classifier
 from .factory.model_factory import create_model  # Moved up
 from .feature_selection import select_features  # Moved up
 from .optimization.hyperparameters import optimize_hyperparameters  # Moved up
