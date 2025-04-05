@@ -10,8 +10,8 @@ import sys
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
 project = "MarketAnalysis Framework"
-copyright = "2025, Your Name"  # Update with actual year/name
-author = "Your Name"  # Update with actual name
+copyright = "2025, Sal Aydin"  # Update with actual year/name
+author = "Sal Aydin"  # Update with actual name
 # The short X.Y version
 # version = '0.1' # You might want to get this from setup.py or __init__.py
 # The full version, including alpha/beta/rc tags
