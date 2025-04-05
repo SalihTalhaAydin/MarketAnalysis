@@ -89,7 +89,7 @@ def load_from_alpha_vantage(
 
             if data.empty:
                 logger.warning(
-                    f"Attempt {attempt+1}/{retry_count}: No data for {ticker} from Alpha Vantage"
+                    f"Attempt {attempt + 1}/{retry_count}: No data for {ticker} from Alpha Vantage"
                 )
                 time.sleep(1)  # Wait before retry
                 continue
@@ -118,7 +118,7 @@ def load_from_alpha_vantage(
 
         except Exception as e:
             logger.warning(
-                f"Attempt {attempt+1}/{retry_count}: Error downloading data from Alpha Vantage: {e}"
+                f"Attempt {attempt + 1}/{retry_count}: Error downloading data from Alpha Vantage: {e}"
             )
             time.sleep(1)  # Wait before retry
 

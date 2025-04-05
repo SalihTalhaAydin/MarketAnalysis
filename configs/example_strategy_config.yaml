@@ -30,28 +30,82 @@ feature_config:
       length: 50
     - indicator: "atr"
       length: 14
+    - indicator: "macd"
+      fast_period: 12
+      slow_period: 26
+      signal_period: 9
+    - indicator: "bollinger_bands"
+      window: 20
+      window_dev: 2
+    - indicator: "adx"
+      window: 14
+    - indicator: "obv"
+    - indicator: "mfi"
+      window: 14
     # Add more indicators as needed...
+
+  # Enable/disable additional feature categories
+  # fractal_window: 5 # Optional: Specify window if fractal_features is true (defaults to 5)
 
   # Target variable config (Corresponds to FeatureConfig attributes)
   target_type: "triple_barrier" # 'triple_barrier', 'directional'
   # Parameters for Triple Barrier (if target_type is triple_barrier)
-  atr_multiplier_tp: 1.0 # Profit Take multiple (from pt_sl[0])
+  atr_multiplier_tp: 1.5 # Profit Take multiple (from pt_sl[0])
   atr_multiplier_sl: 1.0 # Stop Loss multiple (from pt_sl[1])
-  max_holding_period: 10 # Max holding period in bars
+  max_holding_period: 15 # Max holding period in bars
   # min_return: 0.001 # Not directly used by FeatureConfig init
   # volatility_lookback: 20 # Not directly used by FeatureConfig init
   # volatility_target: 0.01 # Not directly used by FeatureConfig init
+  # Flags for new feature categories (added in Subtask 12)
+  volatility_features: true
+  regime_features: true
+  momentum_features: true
+  fractal_features: true # Enable fractals as well
 
-  # Feature Scaling/Normalization (optional) - Removed as not part of FeatureConfig init
-  # scaling:
-  #   method: "StandardScaler" # e.g., "StandardScaler", "MinMaxScaler", null
+  # Feature Selection Configuration
+  feature_selection_method:
+    enabled: true # Whether to perform feature selection
+    # Method for feature selection. Options:
+    # 'importance': Use RandomForest feature importance.
+    # 'mutual_info': Use mutual information (SelectKBest).
+    # 'rfe': Use Recursive Feature Elimination (with Logistic Regression).
+    # 'pca': Use Principal Component Analysis (dimensionality reduction, changes features).
+    # 'model': Use feature importance from a specified model (e.g., lightgbm, xgboost).
+    # null or 'none': Disable feature selection.
+    method: "importance" # Default method
+    params: # Parameters specific to the chosen method
+      # For 'importance', 'mutual_info', 'rfe', 'model':
+      n_features: 25 # Target number of features to select (adjust as needed)
+      # For 'importance' (alternative to n_features):
+      # threshold: 0.01 # Minimum importance threshold
+      # For 'rfe':
+      # step: 1 # Number of features to remove at each iteration
+      # For 'pca':
+      # n_components: 30 # Number of principal components
+      # For 'model':
+      # model_type: "lightgbm" # Model to use ('lightgbm' or 'xgboost')
+      # threshold: "median" # Threshold for SelectFromModel
+
+# Feature Differencing (optional)
+differencing:
+  apply: false # Set to true to enable differencing
+  period: 1 # Differencing period (usually 1)
+  # List of features to apply differencing to. If empty or null, applies to none.
+  # Example: ['sma_length20', 'sma_length50', 'ema_length12']
+  features: []
+
+# Feature Scaling (optional)
+scaling:
+  # Options: 'StandardScaler', 'MinMaxScaler', 'RobustScaler', 'None' or null
+  method: "StandardScaler"
+  # Note: Scaling is typically applied *after* differencing if both are enabled.
   #   apply_to: ["rsi", "sma_20", "sma_50"] # List of features to scale, or 'all'
 
 # Model Configuration (Corresponds to ModelConfig object)
 model_config:
-  model_type: "random_forest" # Use the key registered in model_factory.py
+  model_type: "lightgbm" # Use the key registered in model_factory.py
   # Signal Generation Adjustments
-  probability_threshold: 0.5001 # Set very low threshold to force signals for testing
+  probability_threshold: 0.55   # Lowered threshold for potentially more signals
   signal_trend_filter_ma: null # Disable trend filter
   signal_volatility_filter_atr: null # Disable volatility filter
   # Original model params (adjust if needed for lightgbm) - Removed as not part of ModelConfig init
@@ -69,9 +123,39 @@ model_config:
   #   params: {} # Parameters for the selection method
 
   # Hyperparameter Optimization (optional) - Keep disabled for now
-  optimize_hyperparams: false # Corresponds to ModelConfig attribute
-  optimization_method: "random" # Default if optimize_hyperparams is true
-  optimization_trials: 25 # Default if optimize_hyperparams is true
+  optimize_hyperparams: true # Corresponds to ModelConfig attribute
+  optimization_method: "bayesian" # Default if optimize_hyperparams is true
+  optimization_trials: 100 # Default if optimize_hyperparams is true
+  # Search space for Optuna (adjust ranges/types as needed for LightGBM)
+  search_space:
+    n_estimators: # Integer parameter
+      type: "int"
+      low: 50
+      high: 500
+      step: 50
+    learning_rate: # Float parameter, log scale often good
+      type: "float"
+      low: 0.005
+      high: 0.3
+      log: true
+    num_leaves: # Integer parameter
+      type: "int"
+      low: 10
+      high: 200
+      step: 5
+    max_depth: # Integer parameter, -1 means no limit
+      type: "int"
+      low: 3
+      high: 10
+      step: 1
+    colsample_bytree: # Float parameter (feature fraction)
+      type: "float"
+      low: 0.5
+      high: 1.0
+    subsample: # Float parameter (data fraction)
+      type: "float"
+      low: 0.5
+      high: 1.0
   # hyperopt: # This sub-section isn't directly used by ModelConfig
   #   enabled: false # Commented out - handled by optimize_hyperparams above
   #   method: "optuna" # e.g., "optuna", "hyperopt"
@@ -97,7 +181,7 @@ trading:
   commission_bps: 2.0 # Commission in basis points (e.g., 2.0 = 0.02%)
   slippage_bps: 1.0 # Slippage estimate in basis points
   position_sizing:
-    method: "fixed_fractional" # e.g., "fixed_fractional", "fixed_amount"
+    method: "fixed_fractional" # Explicitly use fixed_fractional
     params:
       fraction: 0.10 # Fraction of capital to risk per trade
       # amount: 1000 # Fixed amount per trade (if using 'fixed_amount')
@@ -114,13 +198,17 @@ trading:
 
 # Market Regime Detection (Optional)
 market_regime:
-  enabled: false
+  enabled: true
   method: "volatility_clustering" # e.g., "volatility_clustering", "rule_based_sma"
   params: # Parameters specific to the chosen method
     # For volatility_clustering:
     n_clusters: 3
     volatility_indicator: "atr"
     volatility_period: 20
+  regime_actions: # Define actions based on detected regime index (0, 1, 2, ...)
+    0: "trade_normal"  # Example: Low volatility regime - trade normally
+    1: "reduce_risk"   # Example: Medium volatility regime - reduce position size (e.g., by half)
+    2: "no_trade"      # Example: High volatility regime - avoid trading
     # For rule_based_sma:
     # short_sma: 20
     # long_sma: 50

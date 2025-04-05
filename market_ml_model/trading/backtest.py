@@ -36,6 +36,8 @@ def backtest_strategy(
     output_dir: Optional[str] = None,
     output_trades_path: Optional[str] = None,
     save_detailed_report: bool = False,
+    regime: Optional[int] = None,  # Added regime parameter
+    regime_actions: Optional[Dict] = None,  # Added regime actions dict
 ) -> Dict[str, Any]:
     """
     Advanced vectorized backtest function with comprehensive risk management.
@@ -64,6 +66,8 @@ def backtest_strategy(
         output_dir: Directory to save report files.
         output_trades_path: Specific path to save trade log CSV.
         save_detailed_report: Whether to save a detailed performance report.
+        regime: The market regime applicable during this backtest period.
+        regime_actions: Dictionary mapping regime index to action string.
 
     Returns:
         Dictionary summarizing the backtest performance.
@@ -213,6 +217,28 @@ def backtest_strategy(
             )
 
             if can_enter:
+                # --- Apply Regime Action ---
+                original_risk_per_trade = trade_manager.risk_per_trade  # Store original
+                action = None
+                if regime is not None and regime_actions:
+                    action = regime_actions.get(int(regime))  # Ensure regime is int key
+                    if action == "reduce_risk":
+                        # Example: Halve the risk for this trade
+                        modified_risk = original_risk_per_trade / 2.0
+                        trade_manager.risk_per_trade = modified_risk
+                        logger.debug(
+                            f"Regime {regime} -> Action: 'reduce_risk'. Temporarily setting risk/trade to {modified_risk:.4f}"
+                        )
+                    # 'no_trade' should have been handled in signal generation, but double-check? No, rely on signals.
+                    # 'trade_normal' requires no change.
+
+                # Add regime to tags
+                trade_tags = ["backtest"]
+                if regime is not None:
+                    trade_tags.append(f"regime_{regime}")
+                    if action:
+                        trade_tags.append(f"action_{action}")
+
                 # Apply transaction cost to entry
                 trade_manager.capital -= trade_manager.capital * transaction_cost_pct
 
@@ -226,8 +252,12 @@ def backtest_strategy(
                     take_profit=take_profit,
                     signal_strength=signal_strength,
                     volatility=current_volatility,  # Volatility at current bar
-                    tags=["backtest"],
+                    tags=trade_tags,  # Use updated tags
                 )
+
+                # Restore original risk setting if it was modified
+                if trade_manager.risk_per_trade != original_risk_per_trade:
+                    trade_manager.risk_per_trade = original_risk_per_trade
 
         # Update benchmark if tracking
         if benchmark_values is not None:

@@ -23,7 +23,9 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
-import yaml  # Added YAML import
+import yaml
+from sklearn.cluster import KMeans
+from sklearn.preprocessing import StandardScaler
 
 # Setup logging first
 logging.basicConfig(
@@ -226,20 +228,65 @@ class AssetConfig:
         return cls(**config_dict)
 
 
+# --- Nested Config Classes for FeatureConfig ---
+
+
+class DifferencingConfig:
+    """Configuration for feature differencing."""
+
+    def __init__(
+        self, apply: bool = False, period: int = 1, features: Optional[List[str]] = None
+    ):
+        self.apply = apply
+        self.period = period
+        self.features = features or []  # List of feature names to difference
+
+    def to_dict(self) -> Dict:
+        return self.__dict__
+
+    @classmethod
+    def from_dict(cls, config_dict: Dict) -> "DifferencingConfig":
+        return cls(**config_dict)
+
+
+class ScalingConfig:
+    """Configuration for feature scaling."""
+
+    def __init__(self, method: Optional[str] = "StandardScaler"):
+        # Validate method?
+        valid_methods = ["StandardScaler", "MinMaxScaler", "RobustScaler", "None", None]
+        if method not in valid_methods:
+            logger.warning(
+                f"Invalid scaling method '{method}'. Defaulting to StandardScaler."
+            )
+            method = "StandardScaler"
+        self.method = (
+            method if method != "None" else None
+        )  # Store None if 'None' string is used
+
+    def to_dict(self) -> Dict:
+        return self.__dict__
+
+    @classmethod
+    def from_dict(cls, config_dict: Dict) -> "ScalingConfig":
+        return cls(**config_dict)
+
+
+# --- Main Feature Configuration ---
+
+
 class FeatureConfig:
     """Configuration for feature engineering."""
 
     def __init__(
         self,
-        # Feature categories
-        technical_indicators: bool = True,
+        # List of specific technical indicators and their parameters
+        technical_indicators: Optional[List[Dict[str, Any]]] = None,
+        # Other feature categories (can keep as booleans or make more detailed)
         volatility_features: bool = True,
-        trend_features: bool = True,
-        pattern_features: bool = False,  # Often noisy
-        price_action_features: bool = True,  # e.g., fractals, S/R distance
-        volume_features: bool = True,
-        vwap_features: bool = False,  # Requires volume
-        support_resistance_features: bool = True,
+        momentum_features: bool = True,
+        pattern_features: bool = False,
+        fractal_features: bool = False,
         time_features: bool = True,
         regime_features: bool = True,
         # Target variable config (if calculated here)
@@ -248,19 +295,20 @@ class FeatureConfig:
         max_holding_period: int = 10,
         target_type: str = "triple_barrier",  # 'triple_barrier', 'directional'
         # Feature selection / reduction
-        feature_selection_enabled: bool = True,  # Renamed from feature_selection
-        feature_selection_method: str = "importance",  # 'importance', 'mutual_info', 'rfe', 'model'
+        feature_selection_enabled: bool = True,
+        feature_selection_method: str = "importance",
         pca_enabled: bool = False,
-        max_features: int = 50,  # Max features after selection
+        max_features: int = 50,
+        # New Transformation Configs
+        differencing: Optional[Dict] = None,  # Accept dict from YAML
+        scaling: Optional[Dict] = None,  # Accept dict from YAML
     ):
-        self.technical_indicators = technical_indicators
+        # Store the list of indicator configs, default to empty list if None
+        self.technical_indicators = technical_indicators or []
         self.volatility_features = volatility_features
-        self.trend_features = trend_features
+        self.momentum_features = momentum_features
         self.pattern_features = pattern_features
-        self.price_action_features = price_action_features
-        self.volume_features = volume_features
-        self.vwap_features = vwap_features
-        self.support_resistance_features = support_resistance_features
+        self.fractal_features = fractal_features
         self.time_features = time_features
         self.regime_features = regime_features
         self.atr_multiplier_tp = atr_multiplier_tp
@@ -272,14 +320,35 @@ class FeatureConfig:
         self.pca_enabled = pca_enabled
         self.max_features = max_features
 
+        # Instantiate nested config objects from input dicts
+        self.differencing = DifferencingConfig.from_dict(differencing or {})
+        self.scaling = ScalingConfig.from_dict(scaling or {})
+
     def to_dict(self) -> Dict:
         """Convert configuration to dictionary."""
-        return self.__dict__
+        # Convert nested objects to dicts for serialization
+        data = self.__dict__.copy()
+        data["differencing"] = (
+            self.differencing.to_dict() if self.differencing else None
+        )
+        data["scaling"] = self.scaling.to_dict() if self.scaling else None
+        return data
 
     @classmethod
     def from_dict(cls, config_dict: Dict) -> "FeatureConfig":
         """Create configuration from dictionary."""
-        return cls(**config_dict)
+        # Handle nested dicts when creating from dict
+        diff_cfg_dict = config_dict.pop("differencing", {})
+        scale_cfg_dict = config_dict.pop("scaling", {})
+
+        # Create instance with remaining args
+        instance = cls(**config_dict)
+
+        # Manually create nested objects (or pass dicts if __init__ handles it)
+        instance.differencing = DifferencingConfig.from_dict(diff_cfg_dict)
+        instance.scaling = ScalingConfig.from_dict(scale_cfg_dict)
+
+        return instance
 
 
 class ModelConfig:
@@ -392,6 +461,116 @@ class WalkForwardConfig:
         return cls(**config_dict)
 
 
+class TradingConfig:
+    """Configuration for trading execution and risk management."""
+
+    def __init__(
+        self,
+        initial_capital: float = 100000.0,
+        position_sizing_method: str = "kelly",  # 'kelly' or 'fixed_fractional'
+        fixed_fraction_amount: float = 0.02,  # Used if method is 'fixed_fractional'
+        max_risk_per_trade: float = 0.02,  # Max risk if using Kelly or other risk-based sizing
+        max_capital_per_trade: float = 0.25,  # Max capital allocation per trade
+        max_open_trades: int = 5,
+        max_drawdown_pct: float = 0.20,  # Portfolio level drawdown limit
+        max_correlation_exposure: int = 2,  # Max trades in same correlation group
+        # Stop/Profit settings (can be here or in FeatureConfig/ModelConfig depending on use)
+        use_dynamic_stops: bool = True,
+        atr_multiplier_sl: float = 1.0,
+        atr_multiplier_tp: float = 2.0,
+        atr_col: str = "ATRr_10",  # Default ATR column name
+        trailing_stop_pct: Optional[float] = 0.01,
+        trailing_stop_activation_pct: float = 0.01,
+        allow_pyramiding: bool = False,
+        commission_bps: float = 2.0,  # Basis points (e.g., 2.0 = 0.02%)
+        slippage_bps: float = 1.0,  # Basis points (e.g., 1.0 = 0.01%)
+    ):
+        self.initial_capital = initial_capital
+        self.position_sizing_method = position_sizing_method
+        self.fixed_fraction_amount = fixed_fraction_amount
+        self.max_risk_per_trade = max_risk_per_trade
+        self.max_capital_per_trade = max_capital_per_trade
+        self.max_open_trades = max_open_trades
+        self.max_drawdown_pct = max_drawdown_pct
+        self.max_correlation_exposure = max_correlation_exposure
+        self.use_dynamic_stops = use_dynamic_stops
+        self.atr_multiplier_sl = atr_multiplier_sl
+        self.atr_multiplier_tp = atr_multiplier_tp
+        self.atr_col = atr_col
+        self.trailing_stop_pct = trailing_stop_pct
+        self.trailing_stop_activation_pct = trailing_stop_activation_pct
+        self.allow_pyramiding = allow_pyramiding
+        self.commission_bps = commission_bps
+        self.slippage_bps = slippage_bps
+        self.commission_pct = commission_bps / 10000.0  # Convert bps to percentage
+        self.slippage_pct = slippage_bps / 10000.0  # Convert bps to percentage
+
+    def to_dict(self) -> Dict:
+        """Convert configuration to dictionary."""
+        return self.__dict__
+
+    @classmethod
+    def from_dict(cls, config_dict: Dict) -> "TradingConfig":
+        """Create configuration from dictionary."""
+        # Handle nested position sizing if present in YAML
+        pos_sizing_config = config_dict.pop("position_sizing", {})
+        config_dict.setdefault(
+            "position_sizing_method", pos_sizing_config.get("method", "kelly")
+        )
+        config_dict.setdefault(
+            "fixed_fraction_amount", pos_sizing_config.get("fraction", 0.02)
+        )
+        # Handle nested stop loss if present in YAML
+        stop_loss_config = config_dict.pop("stop_loss", {})
+        if isinstance(stop_loss_config, dict) and isinstance(
+            stop_loss_config.get("params"), dict
+        ):
+            sl_multiplier = stop_loss_config["params"].get("multiplier")
+            if sl_multiplier is not None:
+                config_dict["atr_multiplier_sl"] = sl_multiplier
+
+        # Handle nested take profit if present in YAML
+        take_profit_config = config_dict.pop("take_profit", {})
+        if isinstance(take_profit_config, dict) and isinstance(
+            take_profit_config.get("params"), dict
+        ):
+            tp_multiplier = take_profit_config["params"].get("multiplier")
+            if tp_multiplier is not None:
+                config_dict["atr_multiplier_tp"] = tp_multiplier
+
+        return cls(**config_dict)
+
+
+# --- Market Regime Configuration ---
+
+
+class MarketRegimeConfig:
+    """Configuration for market regime detection and adaptation."""
+
+    def __init__(
+        self,
+        enabled: bool = False,
+        method: Optional[str] = None,  # e.g., 'volatility_clustering'
+        params: Optional[Dict[str, Any]] = None,  # Method-specific parameters
+        regime_actions: Optional[
+            Dict[int, str]
+        ] = None,  # Actions per regime (e.g., {0: 'no_trade'})
+    ):
+        self.enabled = enabled
+        self.method = method
+        self.params = params or {}
+        self.regime_actions = regime_actions or {}
+
+    def to_dict(self) -> Dict:
+        """Convert configuration to dictionary."""
+        return self.__dict__
+
+    @classmethod
+    def from_dict(cls, config_dict: Dict) -> "MarketRegimeConfig":
+        """Create configuration from dictionary."""
+        return cls(**config_dict)
+
+
 class StrategyConfig:
     """Main configuration container for the trading strategy."""
 
@@ -403,12 +582,21 @@ class StrategyConfig:
         data_end_date: Optional[str] = None,  # Default to now
         assets: Optional[List[AssetConfig]] = None,  # List of assets
         feature_config: Optional[FeatureConfig] = None,
-        model_config: Optional[ModelConfig] = None,
+        model_config: Optional[
+            ModelConfig
+        ] = None,  # Model training/prediction specific
+        trading_config: Optional[TradingConfig] = None,  # Trading execution specific
         walkforward_config: Optional[WalkForwardConfig] = None,
+        market_regime_config: Optional[
+            MarketRegimeConfig
+        ] = None,  # Added Market Regime Config
         output_dir: str = "strategy_results",
         parallel_processing: bool = True,  # Use multiprocessing where possible
         random_state: int = 42,
         debug_mode: bool = False,  # More verbose logging if True
+        search_space: Optional[
+            Dict
+        ] = None,  # Added for hyperparameter optimization search space
     ):
         self.strategy_name = strategy_name
         # Generate unique ID for this run
@@ -419,12 +607,17 @@ class StrategyConfig:
         self.assets = assets or [AssetConfig("SPY")]  # Default to SPY if none provided
         self.feature_config = feature_config or FeatureConfig()
         self.model_config = model_config or ModelConfig()
+        self.trading_config = trading_config or TradingConfig()
         self.walkforward_config = walkforward_config or WalkForwardConfig()
+        self.market_regime_config = (
+            market_regime_config or MarketRegimeConfig()
+        )  # Initialize MarketRegimeConfig
         # Ensure output dir includes the unique run ID
         self.output_dir = os.path.join(output_dir, self.strategy_run_id)
         self.parallel_processing = parallel_processing
         self.random_state = random_state
         self.debug_mode = debug_mode
+        self.search_space = search_space
 
         # Set random seeds for reproducibility
         np.random.seed(random_state)
@@ -449,11 +642,14 @@ class StrategyConfig:
             "assets": [asset.to_dict() for asset in self.assets],
             "feature_config": self.feature_config.to_dict(),
             "model_config": self.model_config.to_dict(),
+            "trading_config": self.trading_config.to_dict(),
             "walkforward_config": self.walkforward_config.to_dict(),
+            "market_regime": self.market_regime_config.to_dict(),  # Serialize MarketRegimeConfig
             "output_dir": self.output_dir,  # Save the specific run dir
             "parallel_processing": self.parallel_processing,
             "random_state": self.random_state,
             "debug_mode": self.debug_mode,
+            "search_space": self.search_space,  # Serialize search_space if needed
         }
 
     @classmethod
@@ -471,6 +667,8 @@ class StrategyConfig:
         )
 
         model_config_dict = config_dict.pop("model_config", {})
+        # Extract search_space before passing to ModelConfig
+        search_space = model_config_dict.pop("search_space", None)
         model_config = (
             ModelConfig.from_dict(model_config_dict)
             if model_config_dict
@@ -484,6 +682,28 @@ class StrategyConfig:
             else WalkForwardConfig()
         )
 
+        trading_config_dict = config_dict.pop("trading", {})
+        trading_config = (
+            TradingConfig.from_dict(trading_config_dict)
+            if trading_config_dict
+            else TradingConfig()
+        )
+
+        trading_config_dict = config_dict.pop("trading", {})
+        trading_config = (
+            TradingConfig.from_dict(trading_config_dict)
+            if trading_config_dict
+            else TradingConfig()
+        )
+
+        # Pop market regime section and create config object
+        market_regime_dict = config_dict.pop("market_regime", {})
+        market_regime_config = (
+            MarketRegimeConfig.from_dict(market_regime_dict)
+            if market_regime_dict
+            else MarketRegimeConfig()
+        )
+
         # Create main configuration, remove run_id if present as it's generated
         config_dict.pop("strategy_run_id", None)
 
@@ -495,22 +715,31 @@ class StrategyConfig:
         config_dict.pop(
             "walk_forward", None
         )  # Note: walkforward_config was handled above
-        config_dict.pop("trading", None)  # Not used directly in StrategyConfig init
-        config_dict.pop(
-            "market_regime", None
-        )  # Not used directly in StrategyConfig init
+        # config_dict.pop("trading", None) # Now handled by TradingConfig above
+        # market_regime_config = config_dict.pop("market_regime", {}) # Handled above
         config_dict.pop("log_level", None)  # Handled separately by logging setup
         # 'results_dir' is used to construct self.output_dir, keep it for now if needed, or pop if handled differently
         # Let's assume 'output_dir' in __init__ handles this, so pop 'results_dir'
         config_dict.pop("results_dir", None)  # Pop if 'output_dir' is the intended arg
+        # Pop keys used for YAML structure but not direct __init__ args
+        config_dict.pop("differencing", None)
+        config_dict.pop("scaling", None)
 
-        return cls(
+        # Create the main instance first
+        instance = cls(
             assets=assets,
             feature_config=feature_config,
             model_config=model_config,
+            trading_config=trading_config,
             walkforward_config=walkforward_config,
+            market_regime_config=market_regime_config,  # Pass MarketRegimeConfig instance
+            search_space=search_space,
             **config_dict,
         )
+
+        # Market regime attributes are now part of instance.market_regime_config
+
+        return instance
 
     def save_config(self, filename: Optional[str] = None) -> str:
         """
@@ -530,8 +759,10 @@ class StrategyConfig:
         filepath = os.path.join(self.output_dir, base_filename)
 
         try:
+            # Get config dict (to_dict now includes market_regime correctly)
+            config_data = self.to_dict()
             with open(filepath, "w") as f:
-                json.dump(self.to_dict(), f, indent=4)
+                json.dump(config_data, f, indent=4)
             logger.info(f"Saved strategy configuration to {filepath}")
             return filepath
         except Exception as e:
@@ -552,6 +783,26 @@ class StrategyConfig:
         if not os.path.exists(filepath):
             logger.error(f"Configuration file not found: {filepath}")
             return None
+        try:
+            with open(filepath, "r") as f:
+                config_dict = yaml.safe_load(f)  # Use safe_load for YAML
+            if not config_dict:
+                logger.error(f"Configuration file is empty or invalid: {filepath}")
+                return None
+            logger.info(f"Loaded strategy configuration from {filepath}")
+            # Recreate config using from_dict, which handles nested structures
+            return cls.from_dict(config_dict)
+        except yaml.YAMLError as e:
+            logger.exception(f"Error parsing YAML configuration file {filepath}: {e}")
+            return None
+        except Exception as e:
+            logger.exception(f"Failed to load configuration from {filepath}: {e}")
+            return None
+        # Removed duplicate/incorrect return and instantiation block
+
+        # Removed duplicate save_config method definition
+
+        # Removed duplicate load_config method definition
         try:
             with open(filepath, "r") as f:
                 config_dict = yaml.safe_load(f)  # Use safe_load for YAML
@@ -856,21 +1107,51 @@ class EnhancedTradingStrategy:
 
         self.config = config
         self.data_loader = self._initialize_data_loader()
-        self.regime_detector = (
-            MarketRegimeDetector(n_regimes=3)
-            if config.model_config.regime_adaptation_enabled
-            else None
-        )  # Example: 3 regimes
-        self.models: Dict[str, str] = (
-            {}
-        )  # Stores paths to saved models (asset_symbol[_regime_X] -> path)
+
+        # --- Market Regime Configuration (Access via StrategyConfig) ---
+        self.market_regime_enabled = getattr(
+            self.config.market_regime_config, "enabled", False
+        )
+        self.market_regime_method = getattr(
+            self.config.market_regime_config, "method", None
+        )
+        self.market_regime_params = getattr(
+            self.config.market_regime_config, "params", {}
+        )
+        self.market_regime_actions = getattr(
+            self.config.market_regime_config, "regime_actions", {}
+        )
+
+        self.kmeans_regime_model = (
+            None  # To store fitted KMeans model per fold if needed
+        )
+        self.scaler_regime = None  # To store fitted scaler per fold if needed
+
+        logger.info(f"Market Regime Detection Enabled: {self.market_regime_enabled}")
+        if self.market_regime_enabled:
+            logger.info(f"Market Regime Method: {self.market_regime_method}")
+            logger.info(f"Market Regime Params: {self.market_regime_params}")
+            logger.info(f"Market Regime Actions: {self.market_regime_actions}")
+            # Check dependencies for selected method
+            if (
+                self.market_regime_method == "volatility_clustering"
+                and not SKLEARN_AVAILABLE_FOR_REGIME
+            ):
+                logger.error(
+                    "Market regime detection uses clustering but scikit-learn is not available."
+                )
+                self.market_regime_enabled = False  # Disable if dependencies missing
+        # )
+        self.models: Dict[
+            str, str
+        ] = {}  # Stores paths to saved models (asset_symbol[_regime_X] -> path)
         self.predictors: Dict[str, ModelPredictorBase] = {}  # Stores loaded predictors
-        self.signal_generators: Dict[str, SignalGenerator] = (
-            {}
-        )  # Stores signal generators per asset/model_key
-        self.results: Dict[str, Any] = (
-            {}
-        )  # Stores results per asset or walk-forward step
+        self.signal_generators: Dict[
+            str, SignalGenerator
+        ] = {}  # Stores signal generators per asset/model_key
+        self.results: Dict[
+            str, Any
+        ] = {}  # Stores results per asset or walk-forward step
 
         # Set logging level based on debug mode
         log_level = logging.DEBUG if config.debug_mode else logging.INFO
@@ -982,11 +1263,39 @@ class EnhancedTradingStrategy:
 
         logger.info(f"Engineering features for {asset_config.symbol}...")
         try:
-            # Pass relevant parts of feature config to the engineer_features function
+            # --- Construct the feature_config dictionary expected by engineer_features ---
+            # The FeatureConfig object now holds the list directly.
+            cfg = self.config.feature_config  # Shortcut to the FeatureConfig object
+
+            eng_feature_config = {
+                # Pass the list of indicator configurations directly
+                "technical_indicators": cfg.technical_indicators,
+                "target_config": {
+                    "type": cfg.target_type,
+                    "atr_multiplier_tp": cfg.atr_multiplier_tp,
+                    "atr_multiplier_sl": cfg.atr_multiplier_sl,
+                    "max_holding_period": cfg.max_holding_period,
+                    # Add other target params if needed from FeatureConfig
+                    # 'min_return_threshold': cfg.min_return_threshold,
+                    # 'threshold': cfg.directional_threshold,
+                    # 'atr_column_name': cfg.atr_column_name # Example if added
+                },
+                # Add flags for other feature types if engineer_features uses them
+                # (Currently, engineer_features doesn't seem to use these flags directly,
+                # but relies on the technical_indicators list and hardcoded other features)
+                # 'volatility_features': cfg.volatility_features,
+                # 'trend_features': cfg.trend_features,
+                # ... etc ...
+            }
+
+            logger.debug(
+                f"Using feature config for engineer_features: {eng_feature_config}"
+            )
+
+            # --- Call the centralized feature engineering function ---
             feature_df = engineer_features(
-                df=data,  # Pass the preprocessed data
-                # Pass feature config as a dictionary
-                feature_config=self.config.feature_config.to_dict(),
+                df=data,
+                feature_config=eng_feature_config,  # Pass the correctly structured dict
             )
 
             if feature_df is None or feature_df.empty:
@@ -994,11 +1303,15 @@ class EnhancedTradingStrategy:
                 return None, None
 
             # Extract target variable
+            # Determine target column based on the config used for engineering
+            target_type_used = eng_feature_config.get("target_config", {}).get(
+                "type", "triple_barrier"
+            )
             target_col_map = {
                 "triple_barrier": "triple_barrier_label",
                 "directional": "directional_label",
             }
-            target_col = target_col_map.get(self.config.feature_config.target_type)
+            target_col = target_col_map.get(target_type_used)
 
             if target_col and target_col in feature_df.columns:
                 target = feature_df[target_col]
@@ -1117,8 +1430,9 @@ class EnhancedTradingStrategy:
                 "scoring": self.config.model_config.scoring_metric,
             }
             train_preproc_config = {
-                # Add preprocessing params if needed, e.g., scaling method
-                "scaling_method": "standard"  # Example
+                # Get scaling method from FeatureConfig -> ScalingConfig
+                "scaling_method": self.config.feature_config.scaling.method,
+                "handle_missing": True,  # Keep default missing handling for now
             }
 
             trained_model, importance, metrics = train_classification_model(
@@ -1261,6 +1575,7 @@ class EnhancedTradingStrategy:
         ohlc_data: pd.DataFrame,  # Pass OHLC for filters
         asset_config: AssetConfig,
         regime: Optional[int] = None,  # Pass regime to potentially adjust signal logic
+        regime_actions: Optional[Dict] = None,  # Pass regime actions from config
     ) -> Optional[pd.DataFrame]:
         """
         Generate trading signals from predictions, applying filters.
@@ -1347,6 +1662,42 @@ class EnhancedTradingStrategy:
                 )
                 return None
 
+            # --- Apply Market Regime Actions ---
+            # Ensure regime_actions is fetched from self.config.market_regime_config if not passed explicitly
+            current_regime_actions = (
+                regime_actions
+                if regime_actions is not None
+                else self.config.market_regime_config.regime_actions
+            )
+
+            if regime is not None and current_regime_actions:
+                # Convert regime (which might be numpy.int64) to standard int for dict lookup
+                regime_key = int(regime)
+                action = current_regime_actions.get(regime_key)
+                if action == "no_trade":
+                    logger.info(
+                        f"Regime {regime_key} -> Action: 'no_trade'. Setting all signals to 0."
+                    )
+                    signals_df["signal"] = 0
+                elif action == "reduce_risk":
+                    # Risk reduction (e.g., halving size) is handled in backtest_strategy
+                    logger.info(
+                        f"Regime {regime_key} -> Action: 'reduce_risk'. (Handled in backtest)"
+                    )
+                    pass  # No signal modification here, handled in backtester
+                elif action == "trade_normal":
+                    logger.info(
+                        f"Regime {regime_key} -> Action: 'trade_normal'. No signal changes."
+                    )
+                    pass  # No change needed
+                elif (
+                    action is not None
+                ):  # Log warning only if action is defined but unknown
+                    logger.warning(
+                        f"Unknown regime action '{action}' for regime {regime_key}. Trading normally."
+                    )
+                # If action is None (regime not in dict), trade normally by default
+
             logger.info(f"Signals generated successfully for {asset_config.symbol}.")
             # Return only the final signal column, aligned with input index
             return signals_df[["signal"]].reindex(predictions.index)
@@ -1358,9 +1709,11 @@ class EnhancedTradingStrategy:
     def backtest_signals(
         self,
         signals: pd.DataFrame,
-        ohlc_data: pd.DataFrame,
+        ohlc_data: pd.DataFrame,  # Should contain features needed for backtest (e.g., ATR)
         asset_config: AssetConfig,
         fold_id: Optional[str] = None,  # Add fold_id for output path
+        regime: Optional[int] = None,  # Pass regime
+        regime_actions: Optional[Dict] = None,  # Pass regime actions from config
     ) -> Optional[Dict]:
         """
         Run a backtest using the generated signals.
@@ -1386,47 +1739,23 @@ class EnhancedTradingStrategy:
         signals_aligned = signals.loc[common_index]
         ohlc_aligned = ohlc_data.loc[common_index]
 
-        # Ensure ATRr_10 column exists for backtesting dynamic stops
-        ohlc_for_backtest = ohlc_aligned.copy()  # Work on a copy
-        atr_col_name = "ATRr_10"  # Column name expected by backtester
+        # Ensure necessary columns (like ATR) are present in ohlc_data
+        # Feature engineering should have added the required ATR column based on config
+        ohlc_for_backtest = ohlc_aligned.copy()
+        # Use ATR column name from trading config
+        atr_col_name = self.config.trading_config.atr_col
 
-        if atr_col_name not in ohlc_for_backtest.columns:
-            logger.info(f"Calculating '{atr_col_name}' for backtest data...")
-            try:
-                # Check for required columns for ATR calculation
-                if not all(
-                    c in ohlc_for_backtest.columns for c in ["high", "low", "close"]
-                ):
-                    raise ValueError("Missing HLC columns required for ATR calculation")
-
-                # Calculate ATRr_10 using pandas_ta
-                import pandas_ta as ta  # Import here as it's used conditionally
-
-                atr_10 = ta.atr(
-                    ohlc_for_backtest["high"],
-                    ohlc_for_backtest["low"],
-                    ohlc_for_backtest["close"],
-                    length=10,  # Use length 10 for ATRr_10
-                )
-                # Calculate ATR as percentage of close price
-                ohlc_for_backtest[atr_col_name] = (
-                    atr_10 / ohlc_for_backtest["close"]
-                ).replace([np.inf, -np.inf], np.nan)
-                # Handle potential NaNs at the beginning
-                ohlc_for_backtest[atr_col_name] = ohlc_for_backtest[
-                    atr_col_name
-                ].fillna(method="bfill")
-                logger.info(f"Successfully calculated '{atr_col_name}'.")
-
-            except ImportError:
-                logger.error(
-                    "pandas-ta not available. Cannot calculate ATRr_10 for backtest."
-                )
-                # Cannot proceed with dynamic stops if ATRr_10 is missing
-                return None
-            except Exception as e:
-                logger.error(f"Error calculating ATRr_10 for backtest: {e}")
-                return None
+        if (
+            atr_col_name not in ohlc_for_backtest.columns
+            and self.config.trading_config.use_dynamic_stops
+        ):
+            logger.error(
+                f"Required ATR column '{atr_col_name}' not found in OHLC data for backtest. "
+                f"Ensure it's generated during feature engineering."
+            )
+            # Attempt calculation if possible (less ideal here)
+            # For now, return error if missing and needed
+            return None
 
         # Combine data needed for backtest function
         backtest_data = ohlc_for_backtest.copy()
@@ -1450,29 +1779,51 @@ class EnhancedTradingStrategy:
 
             trades_path = os.path.join(backtest_output_dir, "trades.csv")
 
+            # --- Get Trading Settings from TradingConfig ---
+            trade_cfg = self.config.trading_config
+            use_kelly = trade_cfg.position_sizing_method.lower() == "kelly"
+            # Use fixed fraction amount as risk_per_trade if method is fixed, else use max_risk_per_trade
+            risk_setting = (
+                trade_cfg.fixed_fraction_amount
+                if not use_kelly
+                else trade_cfg.max_risk_per_trade
+            )
+
+            # Ensure regime_actions is fetched from self.config.market_regime_config if not passed explicitly
+            current_regime_actions = (
+                regime_actions
+                if regime_actions is not None
+                else self.config.market_regime_config.regime_actions
+            )
+
             performance_summary = backtest_strategy(
                 data_with_predictions=backtest_data,
-                transaction_cost_pct=asset_config.commission_pct,
-                slippage_pct_per_trade=asset_config.slippage_pct,
-                initial_capital=100000,  # Standard initial capital
-                risk_per_trade=self.config.model_config.risk_per_trade,
-                use_kelly_sizing=self.config.model_config.use_kelly_sizing,
-                atr_multiplier_sl=self.config.feature_config.atr_multiplier_sl,
-                atr_multiplier_tp=self.config.feature_config.atr_multiplier_tp,
-                atr_col=atr_col_name,  # Pass the determined ATR column name
-                trailing_stop_pct=0.01,  # Example fixed value, make configurable if needed
-                trailing_stop_activation_pct=0.01,  # Example fixed value
-                max_open_trades=self.config.model_config.max_open_trades,
-                max_drawdown_pct=self.config.model_config.max_drawdown_pct,
-                use_dynamic_stops=True,  # Assume dynamic stops if ATR available
-                signal_threshold=self.config.model_config.probability_threshold,  # Pass threshold used
-                allow_pyramiding=False,  # Example, make configurable
-                benchmark_col="close",  # Use close price as benchmark example
+                transaction_cost_pct=asset_config.commission_pct,  # From AssetConfig
+                slippage_pct_per_trade=asset_config.slippage_pct,  # From AssetConfig
+                initial_capital=trade_cfg.initial_capital,
+                risk_per_trade=risk_setting,  # Use calculated risk setting
+                use_kelly_sizing=use_kelly,  # Use boolean based on method
+                atr_multiplier_sl=trade_cfg.atr_multiplier_sl,
+                atr_multiplier_tp=trade_cfg.atr_multiplier_tp,
+                atr_col=trade_cfg.atr_col,  # Use ATR col from trading config
+                trailing_stop_pct=trade_cfg.trailing_stop_pct,
+                trailing_stop_activation_pct=trade_cfg.trailing_stop_activation_pct,
+                max_open_trades=trade_cfg.max_open_trades,
+                max_drawdown_pct=trade_cfg.max_drawdown_pct,
+                use_dynamic_stops=trade_cfg.use_dynamic_stops,
+                signal_threshold=self.config.model_config.probability_threshold,  # From ModelConfig
+                allow_pyramiding=trade_cfg.allow_pyramiding,
+                benchmark_col="close",  # Example, make configurable if needed
                 output_dir=backtest_output_dir,  # Save reports in specific dir
                 output_trades_path=trades_path,
                 save_detailed_report=True,  # Save plots etc.
+                # --- Pass Regime Info ---
+                regime=regime,
+                regime_actions=current_regime_actions,  # Pass the actions dict
             )
-            logger.info(f"Backtest completed for {asset_config.symbol}.")
+            logger.info(
+                f"Backtest completed for {asset_config.symbol} (Regime: {regime})."
+            )
             return performance_summary
 
         except Exception as e:
@@ -1482,6 +1833,14 @@ class EnhancedTradingStrategy:
     def run_walk_forward_validation(self, asset_config: AssetConfig) -> Dict:
         """
         Perform walk-forward validation for a single asset.
+
+        This involves iteratively:
+        1. Splitting data into training and testing periods.
+        2. Engineering features for both periods.
+        3. Detecting the market regime at the end of the training period (if enabled).
+        4. Training/retraining the model on the training data (potentially regime-specific).
+        5. Generating predictions and signals for the test period using the trained model.
+        6. Backtesting the signals on the test period (potentially applying regime actions).
 
         Args:
             asset_config: Configuration for the asset
@@ -1525,21 +1884,198 @@ class EnhancedTradingStrategy:
             step += 1
             fold_id = f"fold_{step}"
             logger.info(f"--- Walk-Forward Step {step} ({fold_id}) ---")
-            logger.info(f"Train Period Indices: {train_start_idx} to {train_end_idx-1}")
-            logger.info(f"Test Period Indices:  {train_end_idx} to {test_end_idx-1}")
+            logger.info(
+                f"Train Period Indices: {train_start_idx} to {train_end_idx - 1}"
+            )
+            logger.info(f"Test Period Indices:  {train_end_idx} to {test_end_idx - 1}")
 
-            # Define train and test sets for this step
+            # --- Split Raw Data into Train/Test Slices ---
+            logger.info(f"Splitting raw data for step {step}...")
             train_data = full_data.iloc[train_start_idx:train_end_idx]
-            test_data = full_data.iloc[train_end_idx:test_end_idx]
+            test_data = full_data.iloc[
+                train_end_idx:test_end_idx
+            ]  # Raw OHLCV for test period
+
+            if train_data.empty or test_data.empty:
+                logger.error(
+                    f"Raw train or test data is empty for step {step}. Skipping."
+                )
+                # Advance window indices
+                train_start_idx = (
+                    train_start_idx + wf_config.step_periods
+                    if wf_config.rolling_window
+                    else train_start_idx
+                )
+                train_end_idx += wf_config.step_periods
+                test_end_idx += wf_config.step_periods
+                continue
+
+            # --- Engineer Features Separately for Train Data ---
+            logger.info(f"Engineering features for TRAIN data (Step {step})...")
+            train_features, train_target = self.engineer_features(
+                train_data, asset_config
+            )
+            # <<< Added Debug Logging for Fold 2 Train Features >>>
+            if step == 2 and train_features is not None:
+                logger.info(
+                    f"[DEBUG Fold 2] Train Features Columns ({len(train_features.columns)}): {sorted(list(train_features.columns))}"
+                )
+
+            if train_features is None or train_target is None:
+                logger.error(
+                    f"Feature engineering failed for TRAIN data in step {step}. Skipping step."
+                )
+                # Advance window indices
+                train_start_idx = (
+                    train_start_idx + wf_config.step_periods
+                    if wf_config.rolling_window
+                    else train_start_idx
+                )
+                train_end_idx += wf_config.step_periods
+                test_end_idx += wf_config.step_periods
+                continue
+
+            # --- Engineer Features Separately for Test Data ---
+
+            # --- Detect Market Regime (based on training data end) ---
+            current_regime = None
+            # Access regime settings via self.config.market_regime_config
+            if (
+                self.config.market_regime_config.enabled
+                and train_features is not None
+                and not train_features.empty
+            ):
+                logger.info(
+                    f"Detecting market regime for end of training period (Step {step})..."
+                )
+                try:
+                    if (
+                        self.config.market_regime_config.method
+                        == "volatility_clustering"
+                    ):
+                        vol_indicator = self.config.market_regime_config.params.get(
+                            "volatility_indicator", "atr"
+                        )  # Default to atr
+                        n_clusters = self.config.market_regime_config.params.get(
+                            "n_clusters", 3
+                        )
+
+                        # Find the actual column name for the indicator (e.g., ATRr_14)
+                        vol_col = None
+                        # Search for column containing indicator name and often period (e.g., atr_14, ATRr_20)
+                        indicator_pattern = f"{vol_indicator.lower()}"  # Basic pattern
+                        potential_cols = [
+                            col
+                            for col in train_features.columns
+                            if indicator_pattern in col.lower()
+                        ]
+                        if potential_cols:
+                            # If specific period is in params, try to match it
+                            vol_period = self.config.market_regime_config.params.get(
+                                "volatility_period"
+                            )
+                            if vol_period:
+                                period_pattern = (
+                                    f"{indicator_pattern}_{vol_period}"  # e.g., atr_20
+                                )
+                                exact_match = [
+                                    col
+                                    for col in potential_cols
+                                    if period_pattern in col.lower()
+                                ]
+                                if exact_match:
+                                    vol_col = exact_match[0]
+                                else:
+                                    vol_col = potential_cols[
+                                        0
+                                    ]  # Fallback to first match
+                                    logger.warning(
+                                        f"Exact volatility column for period {vol_period} not found, using {vol_col}"
+                                    )
+                            else:
+                                vol_col = potential_cols[
+                                    0
+                                ]  # Use first match if no period specified
+                            logger.info(
+                                f"Using volatility column for regime detection: {vol_col}"
+                            )
+                        else:
+                            logger.warning(
+                                f"No column found matching volatility indicator '{vol_indicator}' in train features."
+                            )
+
+                        if vol_col and vol_col in train_features.columns:
+                            vol_data = train_features[[vol_col]].dropna()
+                            if (
+                                len(vol_data) > n_clusters
+                            ):  # Need more data points than clusters
+                                # Fit scaler and kmeans on the training volatility data for this fold
+                                self.scaler_regime = StandardScaler()
+                                scaled_vol = self.scaler_regime.fit_transform(vol_data)
+                                self.kmeans_regime_model = KMeans(
+                                    n_clusters=n_clusters,
+                                    random_state=self.config.random_state,
+                                    n_init=10,
+                                )
+                                self.kmeans_regime_model.fit(scaled_vol)
+
+                                # Predict regime for the last point of the training data
+                                last_scaled_vol = scaled_vol[-1].reshape(1, -1)
+                                current_regime = self.kmeans_regime_model.predict(
+                                    last_scaled_vol
+                                )[0]
+                                logger.info(
+                                    f"Step {step}: Detected Regime = {current_regime} (based on {vol_col})"
+                                )
+                            else:
+                                logger.warning(
+                                    f"Not enough non-NaN data points ({len(vol_data)}) in '{vol_col}' to perform clustering for regime detection (need > {n_clusters})."
+                                )
+                        else:
+                            logger.warning(
+                                f"Selected volatility column '{vol_col}' not found or invalid. Cannot detect regime."
+                            )
+                    else:
+                        logger.warning(
+                            f"Unsupported market regime method: {self.config.market_regime_config.method}"
+                        )
+                except Exception as e:
+                    logger.exception(
+                        f"Error during market regime detection for step {step}: {e}"
+                    )
+            logger.info(f"Engineering features for TEST data (Step {step})...")
+            # Note: We might not need test_target, but engineer_features returns it.
+            test_features, _ = self.engineer_features(test_data, asset_config)
+            # <<< Added Debug Logging for Fold 2 Test Features >>>
+            if step == 2 and test_features is not None:
+                logger.info(
+                    f"[DEBUG Fold 2] Test Features Columns ({len(test_features.columns)}): {sorted(list(test_features.columns))}"
+                )
+
+            if test_features is None:
+                logger.error(
+                    f"Feature engineering failed for TEST data in step {step}. Skipping step."
+                )
+                # Advance window indices
+                train_start_idx = (
+                    train_start_idx + wf_config.step_periods
+                    if wf_config.rolling_window
+                    else train_start_idx
+                )
+                train_end_idx += wf_config.step_periods
+                test_end_idx += wf_config.step_periods
+                continue
+
+            # Ensure test_features align with test_data index if needed later (e.g., for evaluation)
+            # test_features = test_features.reindex(test_data.index) # Reindex if necessary, depends on engineer_features output
+
+            # test_data (raw OHLCV) is already defined and will be used for backtesting signals
 
             # --- Retrain model (optional, based on frequency) ---
             model_path = None
             if step == 1 or (step - 1) % wf_config.retrain_frequency == 0:
                 logger.info(f"Retraining model for step {step}...")
-                # 1. Engineer features for training data
-                train_features, train_target = self.engineer_features(
-                    train_data, asset_config
-                )
+                # Use the already engineered train_features and train_target
                 if train_features is None:
                     logger.error(
                         f"Feature engineering failed for training step {step}. Skipping step."
@@ -1554,10 +2090,39 @@ class EnhancedTradingStrategy:
                     test_end_idx += wf_config.step_periods
                     continue
 
-                # 2. Train model (saves model to fold-specific dir)
+                # 2. Train model (pass regime if adaptation is configured)
                 model_path = self.train_model(
-                    train_features, train_target, asset_config, fold_id=fold_id
+                    train_features,
+                    train_target,
+                    asset_config,
+                    regime=current_regime,
+                    fold_id=fold_id,
                 )
+                # <<< Added Debug Logging for Fold 2 Selected Features >>>
+                if step == 2 and model_path:
+                    selected_features_path = os.path.join(
+                        model_path, "selected_features.json"
+                    )
+                    try:
+                        # Ensure json is imported if not already available in scope
+                        import json
+
+                        with open(selected_features_path, "r") as f:
+                            selected_features_data = json.load(f)
+                            selected_features_list = selected_features_data.get(
+                                "selected_features", []
+                            )
+                            logger.info(
+                                f"[DEBUG Fold 2] Selected Features ({len(selected_features_list)}): {sorted(selected_features_list)}"
+                            )
+                    except FileNotFoundError:
+                        logger.error(
+                            f"[DEBUG Fold 2] selected_features.json not found at {selected_features_path}"
+                        )
+                    except Exception as e:
+                        logger.error(
+                            f"[DEBUG Fold 2] Error reading selected_features.json: {e}"
+                        )
                 if model_path is None:
                     logger.error(
                         f"Model training failed for step {step}. Skipping step."
@@ -1604,11 +2169,8 @@ class EnhancedTradingStrategy:
 
             # --- Generate predictions on test data ---
             logger.info(f"Generating predictions for test period step {step}...")
-            # 1. Engineer features for test data
-            test_features, _ = self.engineer_features(
-                test_data, asset_config
-            )  # Target not needed
-            if test_features is None:
+            # Features for test data were already engineered and split above
+            if test_features.empty:  # Check if test_features ended up empty after split
                 logger.error(
                     f"Feature engineering failed for test step {step}. Skipping step."
                 )
@@ -1622,10 +2184,13 @@ class EnhancedTradingStrategy:
                 test_end_idx += wf_config.step_periods
                 continue
 
-            # 2. Generate predictions using the model trained/selected for this fold
+            # 2. Generate predictions using the model trained/selected for this fold (pass regime)
             predictions_df = self.generate_predictions(
-                test_features, asset_config, fold_id=fold_id
-            )  # Pass fold_id to load correct model
+                test_features,
+                asset_config,
+                regime=current_regime,
+                fold_id=fold_id,  # Pass regime here
+            )
 
             if predictions_df is None:
                 logger.error(
@@ -1641,10 +2206,14 @@ class EnhancedTradingStrategy:
                 test_end_idx += wf_config.step_periods
                 continue
 
-            # --- Generate Signals ---
+            # --- Generate Signals (pass regime info from this fold) ---
             signals_df = self.generate_signals(
-                predictions_df, test_data, asset_config
-            )  # Pass OHLC test data
+                predictions_df,
+                test_data,
+                asset_config,
+                regime=current_regime,
+                regime_actions=self.config.market_regime_config.regime_actions,
+            )
             if signals_df is None:
                 logger.error(
                     f"Signal generation failed for step {step}. Skipping step."
@@ -1661,11 +2230,34 @@ class EnhancedTradingStrategy:
 
             # --- Backtest the test period ---
             logger.info(f"Backtesting test period step {step}...")
+
+            # Prepare data for backtesting: Start with raw OHLCV, add ATR if available
+            backtest_input_data = test_data.copy()
+            trade_cfg = self.config.trading_config
+            atr_col_name = trade_cfg.atr_col
+
+            if atr_col_name and atr_col_name in test_features.columns:
+                # Add the required ATR column from features to the OHLC data
+                # Ensure indices align; they should if test_features came from test_data
+                backtest_input_data[atr_col_name] = test_features[atr_col_name]
+                logger.debug(
+                    f"Added ATR column '{atr_col_name}' to backtest input data for step {step}."
+                )
+            elif atr_col_name and trade_cfg.use_dynamic_stops:
+                # Log a warning if dynamic stops are enabled but the ATR column is missing
+                logger.warning(
+                    f"Required ATR column '{atr_col_name}' not found in test features for step {step}, "
+                    f"but dynamic stops are enabled. Backtest may fail."
+                )
+            # If ATR column is not needed (use_dynamic_stops=False) or not found, proceed with original data
+
             step_results = self.backtest_signals(
                 signals=signals_df,
-                ohlc_data=test_data,  # Pass test OHLC data
+                ohlc_data=backtest_input_data,  # Use the (potentially augmented) data
                 asset_config=asset_config,
                 fold_id=fold_id,  # Pass fold_id for output organization
+                regime=current_regime,  # Pass detected regime for this fold
+                regime_actions=self.config.market_regime_config.regime_actions,  # Pass actions from config
             )
 
             # Log signal counts for debugging
@@ -1679,13 +2271,13 @@ class EnhancedTradingStrategy:
                 # Add fold info to results dict
                 step_results["fold_number"] = step
                 step_results["train_start"] = (
-                    train_data.index[0].isoformat()
-                    if isinstance(train_data.index, pd.DatetimeIndex)
+                    train_features.index[0].isoformat()
+                    if isinstance(train_features.index, pd.DatetimeIndex)
                     else train_start_idx
                 )
                 step_results["train_end"] = (
-                    train_data.index[-1].isoformat()
-                    if isinstance(train_data.index, pd.DatetimeIndex)
+                    train_features.index[-1].isoformat()
+                    if isinstance(train_features.index, pd.DatetimeIndex)
                     else train_end_idx - 1
                 )
                 step_results["test_start"] = (
@@ -2019,39 +2611,142 @@ class EnhancedTradingStrategy:
             data = self.load_data(asset_cfg)
             if data is None:
                 return {"status": "error", "message": "Data loading failed"}
+
             features, target = self.engineer_features(data, asset_cfg)
             if features is None:
-                return {
-                    "status": "error",
-                    "message": "Feature engineering failed",
-                }
-            model_path = self.train_model(features, target, asset_cfg)
+                return {"status": "error", "message": "Feature engineering failed"}
+
+            # --- Detect Market Regime (for single run, based on full features) ---
+            current_regime = None
+            # Access regime settings via self.config.market_regime_config
+            if (
+                self.config.market_regime_config.enabled
+                and features is not None
+                and not features.empty
+            ):
+                logger.info(
+                    f"Detecting market regime for {asset_cfg.symbol} (full data)..."
+                )
+                try:
+                    if (
+                        self.config.market_regime_config.method
+                        == "volatility_clustering"
+                    ):
+                        vol_indicator = self.config.market_regime_config.params.get(
+                            "volatility_indicator", "atr"
+                        )
+                        n_clusters = self.config.market_regime_config.params.get(
+                            "n_clusters", 3
+                        )
+                        # Find vol column (improved matching)
+                        indicator_pattern = f"{vol_indicator.lower()}"
+                        potential_cols = [
+                            col
+                            for col in features.columns
+                            if indicator_pattern in col.lower()
+                        ]
+                        vol_col = None
+                        if potential_cols:
+                            vol_period = self.config.market_regime_config.params.get(
+                                "volatility_period"
+                            )
+                            if vol_period:
+                                period_pattern = f"{indicator_pattern}_{vol_period}"
+                                exact_match = [
+                                    col
+                                    for col in potential_cols
+                                    if period_pattern in col.lower()
+                                ]
+                                if exact_match:
+                                    vol_col = exact_match[0]
+                                else:
+                                    vol_col = potential_cols[0]
+                                    logger.warning(
+                                        f"Exact vol col for period {vol_period} not found, using {vol_col}"
+                                    )
+                            else:
+                                vol_col = potential_cols[0]
+                            logger.info(
+                                f"Using volatility column for regime detection: {vol_col}"
+                            )
+                        else:
+                            logger.warning(
+                                f"No column found matching vol indicator '{vol_indicator}'."
+                            )
+
+                        if vol_col and vol_col in features.columns:
+                            vol_data = features[[vol_col]].dropna()
+                            if len(vol_data) > n_clusters:
+                                scaler = StandardScaler()
+                                scaled_vol = scaler.fit_transform(vol_data)
+                                kmeans = KMeans(
+                                    n_clusters=n_clusters,
+                                    random_state=self.config.random_state,
+                                    n_init=10,
+                                )
+                                kmeans.fit(scaled_vol)
+                                # Predict regime for the *last* point as representative
+                                last_scaled_vol = scaled_vol[-1].reshape(1, -1)
+                                current_regime = kmeans.predict(last_scaled_vol)[0]
+                                logger.info(
+                                    f"Detected Regime = {current_regime} (based on {vol_col} end value)"
+                                )
+                            else:
+                                logger.warning(
+                                    f"Not enough data ({len(vol_data)}) in '{vol_col}' for clustering (need > {n_clusters})."
+                                )
+                        else:
+                            logger.warning(
+                                f"Selected vol column '{vol_col}' invalid. Cannot detect regime."
+                            )
+                    else:
+                        logger.warning(
+                            f"Unsupported regime method: {self.config.market_regime_config.method}"
+                        )
+                except Exception as e:
+                    logger.exception(f"Error detecting regime: {e}")
+
+            # --- Train Model ---
+            model_path = self.train_model(
+                features, target, asset_cfg, regime=current_regime
+            )  # Pass regime
             if model_path is None:
-                return {
-                    "status": "error",
-                    "message": "Model training failed",
-                }
-            # Generate predictions on the *entire* dataset for backtest
+                return {"status": "error", "message": "Model training failed"}
+
+            # --- Generate Predictions ---
             predictions = self.generate_predictions(
-                features, asset_cfg
-            )  # Use original features df
+                features, asset_cfg, regime=current_regime
+            )  # Pass regime
             if predictions is None:
                 return {"status": "error", "message": "Prediction failed"}
+
+            # --- Generate Signals ---
             signals = self.generate_signals(
-                predictions, data, asset_cfg
-            )  # Pass original OHLC data
+                predictions,
+                data,
+                asset_cfg,
+                regime=current_regime,
+                regime_actions=self.config.market_regime_config.regime_actions,
+            )  # Pass regime info
             if signals is None:
-                return {
-                    "status": "error",
-                    "message": "Signal generation failed",
-                }
+                return {"status": "error", "message": "Signal generation failed"}
+
+            # --- Backtest Signals ---
             backtest_results = self.backtest_signals(
-                signals, data, asset_cfg
-            )  # Pass original OHLC data
+                signals,
+                data,
+                asset_cfg,
+                regime=current_regime,
+                regime_actions=self.config.market_regime_config.regime_actions,
+            )  # Pass regime info
+
             return {
                 "backtest_summary": backtest_results,
                 "model_path": model_path,
-            }
+                "detected_regime": int(current_regime)
+                if current_regime is not None
+                else None,
+            }  # Ensure regime is standard int
 
         if use_parallel:
             with concurrent.futures.ThreadPoolExecutor(
@@ -2268,10 +2963,9 @@ class EnhancedTradingStrategy:
             plt.savefig(plot_path, dpi=300, bbox_inches="tight")
             logger.info(f"Saved return distribution plot to {plot_path}")
             plt.close()
-
         except Exception as e:
             logger.error(f"Error plotting strategy performance: {e}")
-            plt.close()
+            plt.close()  # Ensure plot closed on error
 
 
 # --- Entry Point ---

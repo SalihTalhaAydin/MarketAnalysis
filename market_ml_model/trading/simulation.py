@@ -425,7 +425,22 @@ class TradeManager:
 
         # Calculate number of units
         capital_amount = self.capital * capital_fraction
+
+        # Add check for invalid price before division
+        if current_price <= 1e-9:  # Use a small epsilon instead of zero
+            logger.warning(
+                f"Current price ({current_price}) is zero or negative for {symbol}. Cannot calculate units."
+            )
+            return 0.0
+
         units = capital_amount / current_price
+
+        # Add logging to see the calculated fraction and units
+        logger.info(
+            f"Position sizing for {symbol}: Capital={self.capital:.2f}, "
+            f"Fraction={capital_fraction:.6f}, Price={current_price:.4f}, "
+            f"Calculated Units={units:.6f}"
+        )
 
         return units
 
@@ -803,7 +818,7 @@ class TradeManager:
         # Exit reasons
         exit_reasons = trades_df["exit_reason"].value_counts().to_dict()
         for reason, count in exit_reasons.items():
-            metrics[f'exit_{reason.lower().replace(" ", "_")}'] = count
+            metrics[f"exit_{reason.lower().replace(' ', '_')}"] = count
 
         return metrics
 

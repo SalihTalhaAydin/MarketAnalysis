@@ -3,7 +3,7 @@ Technical indicators for market data analysis.
 """
 
 import logging
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple  # Add Any here
 
 import numpy as np
 import pandas as pd
@@ -38,171 +38,221 @@ except ImportError:
     ADVANCED_STATS = False
 
 
+# Remove this line
+# ... (other imports remain the same)
+
+
 def calculate_technical_indicators(
-    df: pd.DataFrame, indicators: Optional[List[str]] = None
+    df: pd.DataFrame, indicator_configs: List[Dict[str, Any]]
 ) -> pd.DataFrame:
     """
-    Calculate technical indicators for the given dataframe using pandas-ta.
+    Calculate technical indicators based on a list of configurations using pandas-ta.
+
+    Handles common indicator name variations and parameter passing. Ensures ATRr_10
+    is calculated if ATR is requested.
 
     Args:
-        df: DataFrame with OHLCV data
-        indicators: List of indicators to calculate (None = all basic indicators)
+        df: DataFrame with OHLCV data. Must contain 'open', 'high', 'low', 'close', 'volume'.
+        indicator_configs: A list of dictionaries, where each dictionary defines
+                           an indicator and its parameters.
+                           Example: [{'indicator': 'sma', 'length': 50},
+                                     {'indicator': 'rsi', 'length': 14},
+                                     {'indicator': 'bollinger_bands', 'length': 20, 'std': 2},
+                                     {'indicator': 'atr', 'length': 10}]
 
     Returns:
-        DataFrame with added technical indicators
+        DataFrame with added technical indicator columns.
     """
     if not PANDAS_TA_AVAILABLE:
         logger.error("pandas-ta not available for calculating indicators")
         return df
 
-    # Default indicators if none specified
-    if indicators is None:
-        indicators = [
-            "sma",
-            "ema",
-            "rsi",
-            "macd",
-            "bbands",
-            "atr",
-            "adx",
-            "stoch",
-            "volume_indicators",
-        ]
+    # Mapping from common config names to pandas-ta function names
+    indicator_mapping = {
+        "bollinger_bands": "bbands",
+        "atr": "atr",
+        "rsi": "rsi",
+        "sma": "sma",
+        "ema": "ema",
+        "macd": "macd",
+        "stoch": "stoch",
+        "mfi": "mfi",
+        "adx": "adx",
+        "obv": "obv",
+        "vwap": "vwap",
+        # Add more mappings as needed
+    }
 
-    # Make a copy of the dataframe
+    # Make a copy of the dataframe to avoid modifying the original
     result_df = df.copy()
 
-    # Check for required columns
-    required_cols = ["open", "high", "low", "close"]
-    missing_cols = [col for col in required_cols if col not in result_df.columns]
+    # Check for required columns (case-insensitive check)
+    required_cols_base = ["open", "high", "low", "close", "volume"]
+    df_cols_lower = [col.lower() for col in result_df.columns]
+    required_cols = []
+    col_mapping = {}  # Map required base name to actual df column name
+    for req_col in required_cols_base:
+        found = False
+        for i, df_col_lower in enumerate(df_cols_lower):
+            if df_col_lower == req_col:
+                required_cols.append(result_df.columns[i])
+                col_mapping[req_col] = result_df.columns[i]
+                found = True
+                break
+        if not found:
+            logger.error(
+                f"Missing required column '{req_col}' (case-insensitive) for technical indicators. Returning original DataFrame."
+            )
+            return df  # Stop if essential columns are missing
 
-    if missing_cols:
-        logger.error(f"Missing required columns for basic indicators: {missing_cols}")
-        # Allow proceeding if some indicators don't need all cols (e.g., volume)
-        # return df # Original behavior: stop if any OHLC missing
+    # Extract standard OHLCV columns using the mapping
+    high_col = col_mapping["high"]
+    low_col = col_mapping["low"]
+    close_col = col_mapping["close"]
+    open_col = col_mapping["open"]
+    volume_col = col_mapping["volume"]
 
     try:
-        # Calculate indicators
-        for indicator in indicators:
-            try:  # Add inner try-except for individual indicators
-                if indicator == "sma":
-                    # Simple Moving Averages
-                    for period in [20, 50, 200]:
-                        result_df[f"sma_{period}"] = ta.sma(
-                            result_df["close"], length=period
-                        )
+        calculated_count = 0
+        for config in indicator_configs:
+            config_indicator_name = config.get("indicator")
+            if not config_indicator_name:
+                logger.warning(f"Skipping config without 'indicator' key: {config}")
+                continue
 
-                elif indicator == "ema":
-                    # Exponential Moving Averages
-                    for period in [9, 20, 50]:
-                        result_df[f"ema_{period}"] = ta.ema(
-                            result_df["close"], length=period
-                        )
+            # Get the actual pandas-ta function name from mapping, default to config name
+            ta_indicator_name = indicator_mapping.get(
+                config_indicator_name.lower(), config_indicator_name
+            )
 
-                elif indicator == "rsi":
-                    # Relative Strength Index
-                    result_df["rsi_14"] = ta.rsi(result_df["close"], length=14)
+            # Extract parameters, excluding the 'indicator' key
+            params = {k: v for k, v in config.items() if k != "indicator"}
 
-                elif indicator == "macd":
-                    # MACD
-                    macd = ta.macd(result_df["close"])
-                    if isinstance(macd, pd.DataFrame) and len(macd.columns) >= 3:
-                        result_df["macd"] = macd.iloc[:, 0]
-                        result_df["macd_signal"] = macd.iloc[:, 1]
-                        result_df["macd_hist"] = macd.iloc[:, 2]
-
-                elif indicator == "bbands":
-                    # Bollinger Bands
-                    bbands = ta.bbands(result_df["close"], length=20)
-                    if isinstance(bbands, pd.DataFrame) and len(bbands.columns) >= 3:
-                        result_df["bb_upper"] = bbands.iloc[:, 0]
-                        result_df["bb_middle"] = bbands.iloc[:, 1]
-                        result_df["bb_lower"] = bbands.iloc[:, 2]
-                        result_df["bb_width"] = (
-                            bbands.iloc[:, 0] - bbands.iloc[:, 2]
-                        ) / bbands.iloc[:, 1]
-
-                elif indicator == "atr":
-                    # Average True Range
-                    if all(c in result_df.columns for c in ["high", "low", "close"]):
-                        result_df["atr_14"] = ta.atr(
-                            result_df["high"],
-                            result_df["low"],
-                            result_df["close"],
-                            length=14,
-                        )
-                        # ATR as a percentage of price (ATRr)
-                        result_df["ATRr_10"] = (
-                            ta.atr(
-                                result_df["high"],
-                                result_df["low"],
-                                result_df["close"],
-                                length=10,
-                            )
-                            / result_df["close"]
-                        )
-                    else:
-                        logger.warning("Missing HLC for ATR calculation.")
-
-                elif indicator == "adx":
-                    # Average Directional Index
-                    if all(c in result_df.columns for c in ["high", "low", "close"]):
-                        adx = ta.adx(
-                            result_df["high"], result_df["low"], result_df["close"]
-                        )
-                        if isinstance(adx, pd.DataFrame) and len(adx.columns) >= 3:
-                            result_df["adx"] = adx.iloc[:, 0]
-                            result_df["dmp"] = adx.iloc[
-                                :, 1
-                            ]  # Plus Directional Movement
-                            result_df["dmn"] = adx.iloc[
-                                :, 2
-                            ]  # Minus Directional Movement
-                    else:
-                        logger.warning("Missing HLC for ADX calculation.")
-
-                elif indicator == "stoch":
-                    # Stochastic Oscillator
-                    if all(c in result_df.columns for c in ["high", "low", "close"]):
-                        stoch = ta.stoch(
-                            result_df["high"], result_df["low"], result_df["close"]
-                        )
-                        if isinstance(stoch, pd.DataFrame) and len(stoch.columns) >= 2:
-                            result_df["stoch_k"] = stoch.iloc[:, 0]
-                            result_df["stoch_d"] = stoch.iloc[:, 1]
-                    else:
-                        logger.warning("Missing HLC for Stochastic calculation.")
-
-                elif indicator == "volume_indicators" and "volume" in result_df.columns:
-                    # Volume-based indicators
-                    result_df["volume_sma20"] = ta.sma(result_df["volume"], length=20)
-                    result_df["volume_ratio"] = (
-                        result_df["volume"] / result_df["volume_sma20"]
+            try:
+                # Check if the function exists in pandas-ta
+                if not hasattr(ta, ta_indicator_name):
+                    logger.warning(
+                        f"Indicator function '{ta_indicator_name}' (mapped from '{config_indicator_name}') not found in pandas-ta. Skipping."
                     )
-                    result_df["obv"] = ta.obv(result_df["close"], result_df["volume"])
+                    continue
 
-                    # Money Flow Index
-                    if all(c in result_df.columns for c in ["high", "low", "close"]):
-                        result_df["mfi_14"] = ta.mfi(
-                            result_df["high"],
-                            result_df["low"],
-                            result_df["close"],
-                            result_df["volume"],
-                            length=14,
+                indicator_func = getattr(ta, ta_indicator_name)
+
+                # Prepare arguments for the pandas-ta function
+                # Most functions accept high, low, close, volume, open as keyword args
+                kwargs = {
+                    "high": result_df[high_col],
+                    "low": result_df[low_col],
+                    "close": result_df[close_col],
+                    "volume": result_df[volume_col],
+                    "open": result_df[open_col],
+                    **params,  # Add specific indicator parameters
+                }
+
+                # Call the indicator function using keyword arguments
+                # pandas-ta functions are generally good at ignoring unused kwargs
+                indicator_result = indicator_func(**kwargs)
+
+                # --- Add results to DataFrame ---
+                if indicator_result is None:
+                    logger.warning(
+                        f"Indicator '{ta_indicator_name}' with params {params} returned None. Skipping."
+                    )
+                    continue
+
+                # Construct base column name using the original config name for clarity
+                param_str = "_".join(f"{k}{v}" for k, v in params.items())
+                base_col_name = (
+                    f"{config_indicator_name}_{param_str}"
+                    if params
+                    else config_indicator_name
+                )
+
+                if isinstance(indicator_result, pd.DataFrame):
+                    # Handle multi-column results (like MACD, BBands, ADX, Stoch)
+                    # Use pandas-ta's default column names, prefixed with our base name
+                    for col in indicator_result.columns:
+                        # Clean up potential overlaps in naming (e.g., bbands result BBL_5_2.0)
+                        clean_col_suffix = col.replace(
+                            f"{ta_indicator_name.upper()}_", ""
+                        ).replace(f"{ta_indicator_name.lower()}_", "")
+                        result_df[f"{base_col_name}_{clean_col_suffix}"] = (
+                            indicator_result[col]
                         )
-                    else:
-                        logger.warning("Missing HLC for MFI calculation.")
-
+                elif isinstance(indicator_result, pd.Series):
+                    # Handle single-column results (like SMA, RSI, ATR)
+                    result_df[base_col_name] = indicator_result
                 else:
-                    if (
-                        indicator != "volume_indicators"
-                    ):  # Avoid warning if volume just missing
-                        logger.warning(f"Unsupported or skipped indicator: {indicator}")
+                    logger.warning(
+                        f"Indicator '{ta_indicator_name}' returned unexpected type: {type(indicator_result)}. Skipping."
+                    )
+                    continue
+
+                # --- Special Handling for ATRr_10 ---
+                if config_indicator_name.lower() == "atr":
+                    atr_length = params.get(
+                        "length", 14
+                    )  # Default ATR length in ta is 14
+                    atr_col_name = (
+                        f"atr_{'length'}{atr_length}"  # Match the generated name
+                    )
+                    if atr_col_name in result_df.columns:
+                        # Calculate ATRr_10 specifically if length is 10
+                        if atr_length == 10:
+                            atr_col = result_df[atr_col_name]
+                            close_prices = result_df[close_col]
+                            # Avoid division by zero
+                            result_df["ATRr_10"] = (
+                                atr_col / close_prices.replace(0, np.nan)
+                            ).fillna(0)
+                            logger.debug("Calculated ATRr_10 column.")
+                        # Also calculate general ATRr if requested (any length)
+                        atr_col = result_df[atr_col_name]
+                        close_prices = result_df[close_col]
+                        result_df[f"ATRr_{atr_length}"] = (
+                            atr_col / close_prices.replace(0, np.nan)
+                        ).fillna(0)
+
+                    else:
+                        logger.warning(
+                            f"Could not find calculated ATR column '{atr_col_name}' to compute ATRr."
+                        )
+
+                calculated_count += 1
 
             except Exception as e_ind:
-                logger.error(f"Error calculating indicator '{indicator}': {e_ind}")
+                logger.error(
+                    f"Error calculating indicator '{config_indicator_name}' (mapped to '{ta_indicator_name}') with params {params}: {e_ind}",
+                    exc_info=True,  # Log traceback for debugging
+                )
+                # Continue to the next indicator
 
-        logger.info(f"Calculated {len(indicators)} indicator groups using pandas-ta")
+        # --- Explicitly calculate ATRr_10 for triple barrier ---
+        # Ensure required columns are available before attempting calculation
+        if all(col in result_df.columns for col in [high_col, low_col, close_col]):
+            try:
+                atr_10 = ta.atr(
+                    result_df[high_col],
+                    result_df[low_col],
+                    result_df[close_col],
+                    length=10,
+                )
+                close_prices = result_df[close_col]
+                # Avoid division by zero and handle potential NaNs from ATR calculation
+                result_df["ATRr_10"] = (
+                    atr_10 / close_prices.replace(0, np.nan)
+                ).fillna(0)
+                logger.info("Successfully calculated explicit ATRr_10 column.")
+            except Exception as e_atr10:
+                logger.error(
+                    f"Error explicitly calculating ATRr_10: {e_atr10}", exc_info=True
+                )
+        else:
+            logger.warning(
+                "Could not calculate explicit ATRr_10 due to missing HLC columns."
+            )
+
+        logger.info(f"Successfully calculated {calculated_count} technical indicators.")
         return result_df
 
     except Exception as e:
@@ -460,6 +510,37 @@ def calculate_market_regime_features(df: pd.DataFrame) -> Dict[str, pd.Series]:
             features["is_stationary"] = (features["adf_pvalue"] < 0.05).astype(int)
         except Exception as e:
             logger.warning(f"Error calculating stationarity features: {e}")
+
+    return features
+
+
+def calculate_fractal_features(
+    df: pd.DataFrame, window: int = 5
+) -> Dict[str, pd.Series]:
+    """
+    Calculate Williams' Fractals features. Requires 'high', 'low'.
+
+    Args:
+        df: DataFrame containing OHLC data
+        window: Window size for fractal calculation (passed to helper)
+
+    Returns:
+        Dictionary of fractal features
+    """
+    features = {}
+    if not all(col in df.columns for col in ["high", "low"]):
+        logger.warning("Missing 'high' or 'low' column for fractal features.")
+        return features
+
+    try:
+        bullish_fractals, bearish_fractals = calculate_fractals(
+            df["high"], df["low"], window=window
+        )
+        features[f"bullish_fractal_{window}"] = bullish_fractals
+        features[f"bearish_fractal_{window}"] = bearish_fractals
+        logger.debug(f"Calculated fractal features with window {window}.")
+    except Exception as e:
+        logger.error(f"Error calculating fractal features: {e}", exc_info=True)
 
     return features
 

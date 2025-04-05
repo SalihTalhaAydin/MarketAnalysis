@@ -155,7 +155,7 @@ def select_features(
             X_pca = pca.fit_transform(X_scaled)
 
             # Create new feature names
-            selected_features = [f"PC{i+1}" for i in range(n_components)]
+            selected_features = [f"PC{i + 1}" for i in range(n_components)]
 
             # Convert back to DataFrame
             X_pca_df = pd.DataFrame(X_pca, index=X.index, columns=selected_features)

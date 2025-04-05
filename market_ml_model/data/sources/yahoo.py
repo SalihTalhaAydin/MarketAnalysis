@@ -66,7 +66,7 @@ def load_from_yahoo(
 
             if data.empty:
                 logger.warning(
-                    f"Attempt {attempt+1}/{retry_count}: No data for {ticker} from Yahoo Finance"
+                    f"Attempt {attempt + 1}/{retry_count}: No data for {ticker} from Yahoo Finance"
                 )
                 time.sleep(1)  # Wait before retry
                 continue
@@ -105,7 +105,7 @@ def load_from_yahoo(
 
         except Exception as e:
             logger.warning(
-                f"Attempt {attempt+1}/{retry_count}: Error downloading data for {ticker}: {e}"
+                f"Attempt {attempt + 1}/{retry_count}: Error downloading data for {ticker}: {e}"
             )
             time.sleep(1)  # Wait before retry
 

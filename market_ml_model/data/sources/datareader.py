@@ -70,7 +70,7 @@ def load_from_datareader(
 
             if data.empty:
                 logger.warning(
-                    f"Attempt {attempt+1}/{retry_count}: No data for {ticker} from {data_source}"
+                    f"Attempt {attempt + 1}/{retry_count}: No data for {ticker} from {data_source}"
                 )
                 time.sleep(1)  # Wait before retry
                 continue
@@ -95,7 +95,7 @@ def load_from_datareader(
 
         except Exception as e:
             logger.warning(
-                f"Attempt {attempt+1}/{retry_count}: Error downloading data from {data_source}: {e}"
+                f"Attempt {attempt + 1}/{retry_count}: Error downloading data from {data_source}: {e}"
             )
             time.sleep(1)  # Wait before retry
 

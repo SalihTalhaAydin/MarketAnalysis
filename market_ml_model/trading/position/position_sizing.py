@@ -16,9 +16,6 @@ def calculate_position_size(
     current_price: Optional[float] = None,  # Added for potential unit calculation
     max_risk_per_trade: float = 0.02,
     max_capital_per_trade: float = 0.25,
-    use_kelly: bool = True,
-    win_rate: Optional[float] = None,
-    payoff_ratio: Optional[float] = None,
 ) -> float:
     """
     Calculate position size as a fraction of capital using various methods.
@@ -30,9 +27,6 @@ def calculate_position_size(
         current_price: Current price (optional, used if returning units)
         max_risk_per_trade: Maximum risk per trade (fraction of capital)
         max_capital_per_trade: Maximum capital allocation per trade (fraction)
-        use_kelly: Whether to use Kelly criterion
-        win_rate: Historical win rate (if available)
-        payoff_ratio: Historical payoff ratio (if available)
 
     Returns:
         Position size (fraction of capital)
@@ -50,47 +44,9 @@ def calculate_position_size(
         logger.warning("Volatility is zero or negative, cannot size position.")
         return 0.0
 
-    # Kelly criterion calculation
-    kelly_pct = max_risk_per_trade  # Default to fixed fractional if Kelly fails
-    if use_kelly:
-        # If historical win rate and payoff available, use those
-        if win_rate is not None and payoff_ratio is not None:
-            if payoff_ratio <= 1e-6:  # Use epsilon comparison
-                logger.warning(
-                    "Payoff ratio is zero or negative, cannot use Kelly. Defaulting to max risk."
-                )
-                # Directly set kelly_pct to max_risk and skip further Kelly calculation
-                kelly_pct = max_risk_per_trade
-                use_kelly = False  # Prevent entering the Kelly calculation block below
-            else:
-                kelly_win_rate = max(0, min(1, win_rate))
-                kelly_payoff = payoff_ratio
-        else:
-            # Estimate from signal strength if historical data unavailable
-            # Calculate edge from signal strength (0.5 = no edge, 1.0 = certain)
-            edge = max(0, (signal_strength - 0.5) * 2)  # Rescale to 0-1 edge
-            kelly_win_rate = 0.5 + edge / 2  # Win probability based on edge
-
-            # Default payoff ratio (e.g., based on typical TP/SL ratio)
-            kelly_payoff = 2.0
-            logger.info(
-                f"Estimating Kelly params: Win Rate={kelly_win_rate:.2f}, Payoff={kelly_payoff:.1f}"
-            )
-
-        # Kelly formula: f* = (p * b - (1 - p)) / b = p - (1-p)/b
-        # Perform Kelly calculation only if use_kelly is still True and stats are valid
-        if use_kelly:  # Check flag again after potential override above
-            # Kelly formula: f* = (p * b - (1 - p)) / b = p - (1-p)/b
-            kelly_f = kelly_win_rate - (1 - kelly_win_rate) / kelly_payoff
-            # Use half Kelly for safety, ensure non-negative
-            kelly_pct = max(0, kelly_f * 0.5)
-            logger.info(f"Kelly fraction (half): {kelly_pct:.4f}")
-        # If use_kelly was false initially or became false due to bad payoff, kelly_pct remains max_risk_per_trade
-
-    else:
-        # Fixed fractional approach
-        kelly_pct = max_risk_per_trade
-        logger.info(f"Using fixed fractional sizing: {kelly_pct:.4f}")
+    # Default to fixed fractional sizing
+    base_fraction = max_risk_per_trade
+    logger.info(f"Initial base fraction set to max_risk_per_trade: {base_fraction:.4f}")
 
     # Volatility adjustment (reduce position size in volatile markets)
     # Normalize volatility (e.g., assume target daily volatility is 1%)
@@ -107,7 +63,7 @@ def calculate_position_size(
 
     # Calculate final position size fraction based on the minimum constraint
     position_size_fraction = min(
-        kelly_pct * volatility_scalar,  # Volatility-adjusted Kelly/FixedFractional
+        base_fraction * volatility_scalar,  # Volatility-adjusted base fraction
         max_capital_per_trade,  # Max capital allocation constraint
     )
 

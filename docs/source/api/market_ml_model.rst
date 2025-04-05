@@ -10,6 +10,7 @@ Subpackages
    market_ml_model.data
    market_ml_model.features
    market_ml_model.models
+   market_ml_model.strategy
    market_ml_model.trading
    market_ml_model.utils
 

@@ -30,7 +30,7 @@ try:
     from sklearn.preprocessing import (
         MinMaxScaler,
         OneHotEncoder,
-        QuantileTransformer,
+        # QuantileTransformer, # Removed unused import
         RobustScaler,
         StandardScaler,
     )
@@ -124,19 +124,32 @@ def create_feature_pipeline(
                 ("imputer", SimpleImputer(strategy="median"))
             )
 
-        if scaling_method == "standard":
+        # Normalize the scaling method name for comparison
+        normalized_scaling_method = (
+            str(scaling_method).lower() if scaling_method is not None else "none"
+        )
+
+        if normalized_scaling_method == "standardscaler":
             numeric_transformer_steps.append(("scaler", StandardScaler()))
-        elif scaling_method == "minmax":
+            logger.info("Using StandardScaler for numeric features.")
+        elif normalized_scaling_method == "minmaxscaler":
             numeric_transformer_steps.append(("scaler", MinMaxScaler()))
-        elif scaling_method == "robust":
+            logger.info("Using MinMaxScaler for numeric features.")
+        elif normalized_scaling_method == "robustscaler":
             numeric_transformer_steps.append(("scaler", RobustScaler()))
-        elif scaling_method == "quantile":
-            numeric_transformer_steps.append(
-                ("scaler", QuantileTransformer(output_distribution="normal"))
-            )
-        elif scaling_method is not None and scaling_method != "none":
+            logger.info("Using RobustScaler for numeric features.")
+        # Keep quantile as an option if needed, though not in the original request
+        # elif normalized_scaling_method == "quantile":
+        #     numeric_transformer_steps.append(
+        #         ("scaler", QuantileTransformer(output_distribution="normal"))
+        #     )
+        #     logger.info("Using QuantileTransformer for numeric features.")
+        elif normalized_scaling_method == "none":
+            logger.info("No scaling applied to numeric features.")
+            # No scaler step added
+        else:
             logger.warning(
-                f"Unsupported scaling method: {scaling_method}. No scaling applied."
+                f"Unsupported scaling method: '{scaling_method}'. No scaling applied."
             )
 
         if numeric_transformer_steps:  # Only add transformer if steps exist

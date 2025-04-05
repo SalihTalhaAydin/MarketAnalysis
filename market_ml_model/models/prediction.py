@@ -351,7 +351,7 @@ def predict_with_threshold(
         positive_class_index: Index of the positive class for binary thresholding
 
     Returns:
-        Predicted class indices (or labels if model.classes_ was used)
+        Predicted class indices (or labels if ``model.classes_`` was used)
     """
     if probabilities is None or probabilities.ndim != 2:
         logger.error("Invalid probabilities array provided.")
@@ -1196,64 +1196,64 @@ class SignalGenerator:
 
     def generate_signals(
         self,
-        features: pd.DataFrame,
+        predictions_df: pd.DataFrame,  # Changed from features
         ohlc_data: Optional[pd.DataFrame] = None,  # Needed for filters
     ) -> pd.DataFrame:
         """
-        Generate trading signals (-1, 0, 1) based on model probabilities.
+        Generate trading signals (-1, 0, 1) based on pre-calculated model predictions/probabilities.
 
         Args:
-            features: DataFrame of input features for the model
-            ohlc_data: DataFrame with OHLC data for filters (must align with features index)
+            predictions_df: DataFrame containing model outputs (e.g., 'probability_0', 'probability_1', 'confidence')
+                            Must align index with ohlc_data if filters are used.
+            ohlc_data: DataFrame with OHLC data for filters (must align with predictions_df index)
 
         Returns:
             DataFrame with 'probability_pos', 'probability_neg', 'signal', 'confidence' columns
         """
-        if features.empty:
+        if predictions_df.empty:
             return pd.DataFrame(
                 columns=["probability_pos", "probability_neg", "signal", "confidence"]
             )
 
-        logger.info(f"Generating signals for {len(features)} samples...")
-        probabilities, class_names = self.predictor.predict_proba(features)
+        logger.info(f"Generating signals from {len(predictions_df)} predictions...")
 
-        if probabilities is None:
-            logger.error("Failed to get probabilities from predictor.")
-            return pd.DataFrame(
-                columns=["probability_pos", "probability_neg", "signal", "confidence"]
-            )
-
-        if probabilities.shape[1] < 2:
+        # --- Extract probabilities and confidence directly from predictions_df ---
+        # Use raw class names based on stored indices
+        if not self.class_names or max(self.pos_idx, self.neg_idx) >= len(
+            self.class_names
+        ):
             logger.error(
-                f"Probabilities have unexpected shape: {probabilities.shape}. Need at least 2 classes."
+                f"Class names {self.class_names} are invalid or indices {self.pos_idx}/{self.neg_idx} are out of bounds."
             )
             return pd.DataFrame(
                 columns=["probability_pos", "probability_neg", "signal", "confidence"]
             )
 
-        # Ensure class names match if provided earlier
-        if self.class_names and self.class_names != class_names:
-            logger.warning(
-                f"Class names mismatch during prediction. Expected {self.class_names}, got {class_names}. Re-evaluating indices."
+        prob_col_pos = self.class_names[self.pos_idx]
+        prob_col_neg = self.class_names[self.neg_idx]
+        logger.info(
+            f"Expecting probability columns: Positive='{prob_col_pos}', Negative='{prob_col_neg}'"
+        )
+
+        # Ensure required probability columns exist using raw class names
+        if prob_col_pos not in predictions_df.columns:
+            logger.error(
+                f"Expected positive probability column '{prob_col_pos}' not found in predictions_df columns: {list(predictions_df.columns)}"
             )
-            # Re-attempt index finding
-            try:
-                self.neg_idx = (
-                    class_names.index("-1")
-                    if "-1" in class_names
-                    else (
-                        class_names.index("0")
-                        if "0" in class_names and len(class_names) == 2
-                        else 0
-                    )
-                )
-                self.pos_idx = class_names.index("1") if "1" in class_names else 1
+            return pd.DataFrame(
+                columns=["probability_pos", "probability_neg", "signal", "confidence"]
+            )
+
+        if prob_col_neg not in predictions_df.columns:
+            # If only 2 classes and negative column missing, infer it
+            if len(self.class_names) == 2:
                 logger.info(
-                    f"Updated Signal mapping: Neg Idx={self.neg_idx}, Pos Idx={self.pos_idx}"
+                    f"Expected negative probability column '{prob_col_neg}' not found. Inferring as 1 - P('{prob_col_pos}')."
                 )
-            except ValueError:
+                prob_neg = 1 - predictions_df[prob_col_pos]  # Calculate it
+            else:
                 logger.error(
-                    f"Could not map new class names {class_names}. Cannot generate signals."
+                    f"Expected negative probability column '{prob_col_neg}' not found in predictions_df columns: {list(predictions_df.columns)}"
                 )
                 return pd.DataFrame(
                     columns=[
@@ -1263,30 +1263,38 @@ class SignalGenerator:
                         "confidence",
                     ]
                 )
+        else:
+            prob_neg = predictions_df[prob_col_neg]  # Extract if exists
 
-        prob_pos = probabilities[:, self.pos_idx]
-        # Handle case where negative class might not exist explicitly (e.g., binary [0, 1])
-        prob_neg = (
-            probabilities[:, self.neg_idx]
-            if self.neg_idx < probabilities.shape[1]
-            else (1 - prob_pos if probabilities.shape[1] == 2 else 0)
-        )
+        prob_pos = predictions_df[prob_col_pos]
 
-        signals = pd.DataFrame(index=features.index)
+        # Extract confidence if available, otherwise calculate as max probability
+        if "confidence" in predictions_df.columns:
+            confidence = predictions_df["confidence"]
+        else:
+            logger.info(
+                "Confidence column not found, calculating as max(P(pos), P(neg))."
+            )
+            confidence = np.maximum(
+                prob_pos, prob_neg
+            )  # Use extracted/calculated probs
+
+        # --- Start Signal DataFrame ---
+        signals = pd.DataFrame(index=predictions_df.index)
         signals["probability_pos"] = prob_pos
-        signals["probability_neg"] = prob_neg
-        signals["confidence"] = np.max(probabilities, axis=1)
+        signals["probability_neg"] = prob_neg  # Use extracted or calculated neg prob
+        signals["confidence"] = confidence
         signals["raw_signal"] = 0  # Initialize
+
+        # Class name consistency check is implicitly handled by requiring specific probability columns above
 
         # --- Apply Signal Generation Logic ---
         # Use the original threshold-based logic (or probability_weighted if configured)
         if self.signal_type == "threshold":
             signals.loc[prob_pos >= self.threshold, "raw_signal"] = 1
             signals.loc[prob_neg >= self.threshold, "raw_signal"] = -1
-            if probabilities.shape[1] == 2:  # Binary case refinement
-                signals["raw_signal"] = 0
-                signals.loc[prob_pos >= self.threshold, "raw_signal"] = 1
-                signals.loc[prob_pos <= (1 - self.threshold), "raw_signal"] = -1
+            # Removed redundant binary case refinement block (lines 1273-1276)
+            # The main logic already handles positive and negative probabilities correctly.
         elif self.signal_type == "probability_weighted":
             signals.loc[prob_pos > self.neutral_zone[1], "raw_signal"] = 1
             signals.loc[prob_pos < self.neutral_zone[0], "raw_signal"] = -1
@@ -1410,9 +1418,9 @@ class SignalGenerator:
                 if i - last_signal_idx > self.cooling_period:
                     last_signal_idx = i  # Allow signal, update last signal time
                 else:
-                    signals["signal"].iloc[
-                        i
-                    ] = 0  # Suppress signal due to cooling period
+                    signals.loc[signals.index[i], "signal"] = (
+                        0  # Suppress signal (safe assignment)
+                    )
         logger.info(f"Applied cooling period of {self.cooling_period} bars.")
 
     def plot_signal_history(
