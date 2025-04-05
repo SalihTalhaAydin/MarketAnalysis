@@ -418,9 +418,6 @@ class TradeManager:
             volatility=volatility,
             max_risk_per_trade=self.risk_per_trade,
             max_capital_per_trade=self.max_capital_per_trade,
-            use_kelly=self.use_kelly_sizing,
-            win_rate=self.running_win_rate,
-            payoff_ratio=self.running_payoff_ratio,
         )
 
         # Calculate number of units
