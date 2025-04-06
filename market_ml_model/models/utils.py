@@ -5,11 +5,7 @@ from typing import Optional
 import pandas as pd
 
 # Import necessary components from other modules
-from .predictor import (
-    ModelPredictorBase,
-    predict_with_threshold,
-    get_confidence_levels,
-)
+from .predictor import ModelPredictorBase, get_confidence_levels, predict_with_threshold
 
 logger = logging.getLogger(__name__)
 

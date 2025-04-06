@@ -6,11 +6,7 @@ import numpy as np
 import pandas as pd
 
 # Import necessary components from the predictor module
-from .predictor import (
-    ModelPredictorBase,
-    get_confidence_levels,
-    predict_with_threshold,
-)
+from .predictor import ModelPredictorBase, get_confidence_levels, predict_with_threshold
 
 logger = logging.getLogger(__name__)
 

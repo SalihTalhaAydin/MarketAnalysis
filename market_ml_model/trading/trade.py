@@ -278,8 +278,8 @@ class Trade:
             "realized_pnl": self.realized_pnl,
             "max_favorable_excursion": self.max_favorable_excursion,
             "max_adverse_excursion": self.max_adverse_excursion,
-            "duration": str(self.duration)
-            if self.duration is not None
-            else None,  # Convert duration to string
+            "duration": (
+                str(self.duration) if self.duration is not None else None
+            ),  # Convert duration to string
             "tags": ",".join(self.tags) if self.tags else "",
         }

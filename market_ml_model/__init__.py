@@ -11,8 +11,8 @@ __version__ = "0.1.0"
 from .data import DataLoader, load_data
 from .features import engineer_features
 from .models.factory.model_factory import create_model
-from .models.utils import predict_with_model
 from .models.training import train_classification_model
+from .models.utils import predict_with_model
 from .strategy.config import StrategyConfig
 from .strategy.runner import run_trading_strategy
 from .trading import TradeManager
