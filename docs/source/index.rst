@@ -14,7 +14,7 @@ For a quick overview and installation instructions, please see the main `README.
 
    guides/getting_started
    guides/configuration
-
+   guides/performance_tuning
    architecture/ARCHITECTURAL_PLAN
 
    development/code_quality

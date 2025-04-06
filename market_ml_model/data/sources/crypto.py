@@ -112,7 +112,7 @@ def load_from_crypto(
 
             if not ohlcv:
                 logger.warning(
-                    f"Attempt {attempt+1}/{retry_count}: No data for {symbol} from {exchange}"
+                    f"Attempt {attempt + 1}/{retry_count}: No data for {symbol} from {exchange}"
                 )
                 time.sleep(1)  # Wait before retry
                 continue
@@ -137,7 +137,7 @@ def load_from_crypto(
 
         except Exception as e:
             logger.warning(
-                f"Attempt {attempt+1}/{retry_count}: Error downloading crypto data: {e}"
+                f"Attempt {attempt + 1}/{retry_count}: Error downloading crypto data: {e}"
             )
             time.sleep(1)  # Wait before retry
 

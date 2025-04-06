@@ -6,53 +6,68 @@ import pandas as pd  # Add pandas import
 import pytest
 
 # Import config classes and detector to test
-from market_ml_model.strategy.main import (  # Import the main strategy class; Import the class to test
+# Import config classes and detector to test
+from market_ml_model.strategy.config import (
     AssetConfig,
-    EnhancedTradingStrategy,
     FeatureConfig,
-    MarketRegimeDetector,
     ModelConfig,
     StrategyConfig,
     WalkForwardConfig,
 )
+from market_ml_model.strategy.core import EnhancedTradingStrategy
+from market_ml_model.strategy.regime import MarketRegimeDetector
 
 # Import sklearn components for mocking specs
 
 
 # Define path for patching within the strategy.main module
-STRATEGY_PATH = "market_ml_model.strategy.main"
+# Define paths for patching within the refactored modules
+CORE_PATH = "market_ml_model.strategy.core"
+REGIME_PATH = "market_ml_model.strategy.regime"
+CONFIG_PATH = "market_ml_model.strategy.config"  # Added for clarity if needed later
 
 
 # Mock the dependencies imported by strategy.main at the module level
 # This avoids errors if the actual modules are not fully installed or have issues
 @pytest.fixture(autouse=True)
 def mock_strategy_dependencies(mocker):
-    mocker.patch(f"{STRATEGY_PATH}.DataLoader", MagicMock())
-    mocker.patch(f"{STRATEGY_PATH}.DataLoaderConfig", MagicMock())
-    mocker.patch(f"{STRATEGY_PATH}.load_data", MagicMock())
-    mocker.patch(f"{STRATEGY_PATH}.engineer_features", MagicMock())
-    mocker.patch(f"{STRATEGY_PATH}.train_classification_model", MagicMock())
-    # mocker.patch(f"{STRATEGY_PATH}.create_feature_pipeline", MagicMock()) # Removed patch for removed import
-    mocker.patch(f"{STRATEGY_PATH}.ModelPredictorBase", MagicMock())
-    mocker.patch(f"{STRATEGY_PATH}.PredictionManager", MagicMock())
-    mocker.patch(f"{STRATEGY_PATH}.SignalGenerator", MagicMock())
-    mocker.patch(f"{STRATEGY_PATH}.predict_with_model", MagicMock())
+    # Mocks for dependencies used in strategy.core (EnhancedTradingStrategy)
+    mocker.patch(f"{CORE_PATH}.DataLoader", MagicMock())
+    mocker.patch(f"{CORE_PATH}.DataLoaderConfig", MagicMock())
+    mocker.patch(f"{CORE_PATH}.load_data", MagicMock())
+    mocker.patch(f"{CORE_PATH}.engineer_features", MagicMock())
+    mocker.patch(f"{CORE_PATH}.train_classification_model", MagicMock())
+    # Patch where the object is defined/imported from
+    mocker.patch("market_ml_model.models.predictor.ModelPredictorBase", MagicMock())
+    # PredictionManager no longer directly imported in core
+    mocker.patch("market_ml_model.models.signals.SignalGenerator", MagicMock())
+    # predict_with_model no longer directly imported in core
+    # load_model no longer directly imported in core
+    mocker.patch(f"{CORE_PATH}.generate_model_report", MagicMock())
+    mocker.patch(f"{CORE_PATH}.backtest_strategy", MagicMock())
     mocker.patch(
-        f"{STRATEGY_PATH}.load_model", MagicMock(return_value=(MagicMock(), {}))
-    )  # Return dummy model/meta
-    mocker.patch(f"{STRATEGY_PATH}.generate_model_report", MagicMock())
-    mocker.patch(f"{STRATEGY_PATH}.backtest_strategy", MagicMock())
-    mocker.patch(f"{STRATEGY_PATH}.TradeManager", MagicMock())
-    mocker.patch(f"{STRATEGY_PATH}.calculate_returns_metrics", MagicMock())
-    mocker.patch(f"{STRATEGY_PATH}.plot_equity_curve", MagicMock())
-    mocker.patch(f"{STRATEGY_PATH}.plot_monthly_returns", MagicMock())
-    mocker.patch(f"{STRATEGY_PATH}.plot_drawdowns", MagicMock())
-    mocker.patch(f"{STRATEGY_PATH}.KMeans", MagicMock())
-    mocker.patch(f"{STRATEGY_PATH}.StandardScaler", MagicMock())
-    mocker.patch(f"{STRATEGY_PATH}.SKLEARN_AVAILABLE_FOR_REGIME", True)
+        "market_ml_model.trading.TradeManager", MagicMock()
+    )  # Patch where defined/exposed
+    mocker.patch(f"{CORE_PATH}.calculate_returns_metrics", MagicMock())
+    mocker.patch(f"{CORE_PATH}.plot_equity_curve", MagicMock())
+    mocker.patch(f"{CORE_PATH}.plot_monthly_returns", MagicMock())
+    mocker.patch(f"{CORE_PATH}.plot_drawdowns", MagicMock())
     mocker.patch(
-        f"{STRATEGY_PATH}.MODULES_AVAILABLE", True
-    )  # Assume modules are available for tests
+        f"{CORE_PATH}.MarketRegimeDetector", MagicMock()
+    )  # Mock detector used by core
+    mocker.patch(
+        f"{CORE_PATH}.MODULES_AVAILABLE", True
+    )  # Assume modules available in core
+
+    # Mocks for dependencies used in strategy.regime (MarketRegimeDetector)
+    mocker.patch(f"{REGIME_PATH}.KMeans", MagicMock())
+    mocker.patch(f"{REGIME_PATH}.StandardScaler", MagicMock())
+    mocker.patch(f"{REGIME_PATH}.SKLEARN_AVAILABLE_FOR_REGIME", True)
+
+    # Mocks for dependencies potentially used in config (e.g., os.makedirs)
+    mocker.patch(
+        f"{CONFIG_PATH}.os.makedirs", MagicMock()
+    )  # Patch os.makedirs where StrategyConfig is defined
 
 
 # --- Tests for AssetConfig ---
@@ -111,14 +126,12 @@ def test_asset_config_dict_conversion():
 def test_feature_config_defaults():
     """Test FeatureConfig default values."""
     config = FeatureConfig()
-    assert config.technical_indicators is True
+    assert config.technical_indicators == []  # Default is now an empty list
     assert config.volatility_features is True
-    assert config.trend_features is True
+    assert config.momentum_features is True  # Check default for momentum
     assert config.pattern_features is False
-    assert config.price_action_features is True
-    assert config.volume_features is True
-    assert config.vwap_features is False
-    assert config.support_resistance_features is True
+    assert config.fractal_features is False  # Check default for fractal
+    # Removed assertions for non-existent attributes (trend, price_action, volume, vwap, support_resistance)
     assert config.time_features is True
     assert config.regime_features is True
     assert config.atr_multiplier_tp == 2.0
@@ -142,7 +155,7 @@ def test_feature_config_dict_conversion():
     config_dict = config1.to_dict()
     for key, value in params.items():
         assert config_dict[key] == value
-    assert config_dict["technical_indicators"] is True  # Check default
+    assert config_dict["technical_indicators"] == []  # Check default is empty list
 
     config2 = FeatureConfig.from_dict(config_dict)
     assert config1.pattern_features == config2.pattern_features
@@ -237,7 +250,8 @@ def test_walkforward_config_dict_conversion():
 # --- Tests for StrategyConfig ---
 
 
-@patch(f"{STRATEGY_PATH}.os.makedirs")  # Mock makedirs during init
+# Patch os.makedirs where StrategyConfig is defined (now in config.py)
+@patch(f"{CONFIG_PATH}.os.makedirs")
 def test_strategy_config_defaults(mock_makedirs):
     """Test StrategyConfig default values."""
     config = StrategyConfig()
@@ -259,7 +273,7 @@ def test_strategy_config_defaults(mock_makedirs):
     mock_makedirs.assert_called_once()  # Check output dir creation attempt
 
 
-@patch(f"{STRATEGY_PATH}.os.makedirs")
+@patch(f"{CONFIG_PATH}.os.makedirs")
 def test_strategy_config_custom(mock_makedirs):
     """Test StrategyConfig with custom values."""
     asset1 = AssetConfig("MSFT")
@@ -296,7 +310,7 @@ def test_strategy_config_custom(mock_makedirs):
     mock_makedirs.assert_called_once()
 
 
-@patch(f"{STRATEGY_PATH}.os.makedirs")
+@patch(f"{CONFIG_PATH}.os.makedirs")
 def test_strategy_config_dict_conversion(mock_makedirs, tmp_path):
     """Test StrategyConfig to_dict and from_dict."""
     # Use tmp_path for output_dir to avoid actual directory creation issues
@@ -340,9 +354,9 @@ def test_strategy_config_dict_conversion(mock_makedirs, tmp_path):
     assert config2.output_dir.endswith(config2.strategy_run_id)  # Ends with new run id
 
 
-@patch(f"{STRATEGY_PATH}.os.makedirs")
-@patch(f"{STRATEGY_PATH}.open", new_callable=mock_open)
-@patch(f"{STRATEGY_PATH}.json.dump")
+@patch(f"{CONFIG_PATH}.os.makedirs")
+@patch(f"{CONFIG_PATH}.open", new_callable=mock_open)
+@patch(f"{CONFIG_PATH}.json.dump")
 def test_strategy_config_save(mock_json_dump, mock_open_func, mock_makedirs, tmp_path):
     """Test saving StrategyConfig to JSON."""
     output_base = str(tmp_path / "save_test")
@@ -358,10 +372,13 @@ def test_strategy_config_save(mock_json_dump, mock_open_func, mock_makedirs, tmp
     assert mock_json_dump.call_args[0][0] == config.to_dict()
 
 
-@patch(f"{STRATEGY_PATH}.os.makedirs")
-@patch(f"{STRATEGY_PATH}.open", new_callable=mock_open)
-@patch(f"{STRATEGY_PATH}.json.load")
-def test_strategy_config_load(mock_json_load, mock_open_func, mock_makedirs, tmp_path):
+@patch(f"{CONFIG_PATH}.os.makedirs")
+@patch(f"{CONFIG_PATH}.os.path.exists")  # Add mock for os.path.exists
+@patch(f"{CONFIG_PATH}.open", new_callable=mock_open)  # Keep mocking open
+@patch(f"{CONFIG_PATH}.yaml.safe_load")  # Mock yaml.safe_load instead of json.load
+def test_strategy_config_load(
+    mock_yaml_load, mock_open_func, mock_path_exists, mock_makedirs, tmp_path
+):  # Add mock_path_exists to signature
     """Test loading StrategyConfig from JSON."""
     config_dict_to_load = {
         "strategy_name": "Loaded Strat",
@@ -394,19 +411,25 @@ def test_strategy_config_load(mock_json_load, mock_open_func, mock_makedirs, tmp
         "random_state": 99,
         "debug_mode": True,
     }
-    mock_json_load.return_value = config_dict_to_load
+    mock_yaml_load.return_value = config_dict_to_load  # Use the correct mock name
+    mock_path_exists.return_value = True  # Simulate file existing
     config_path = "/fake/config.json"
 
     config = StrategyConfig.load_config(config_path)
 
+    mock_path_exists.assert_called_once_with(
+        config_path
+    )  # Check os.path.exists was called
     mock_open_func.assert_called_once_with(config_path, "r")
-    mock_json_load.assert_called_once()
+    mock_yaml_load.assert_called_once()  # Assert call on the correct mock
     assert isinstance(config, StrategyConfig)
     assert config.strategy_name == "Loaded Strat"
     assert config.data_start_date == "2021-01-01"
     assert len(config.assets) == 1
     assert config.assets[0].symbol == "XYZ"
-    assert config.feature_config.technical_indicators is False  # Loaded value
+    assert (
+        config.feature_config.technical_indicators == []
+    )  # Loaded value (False) becomes empty list
     assert config.feature_config.max_features == 10  # Loaded value
     assert config.feature_config.volatility_features is True  # Default value
     assert config.model_config.model_type == "random_forest"  # Loaded value
@@ -439,12 +462,13 @@ def sample_regime_features():
     return pd.DataFrame(data, index=dates)
 
 
-@patch(f"{STRATEGY_PATH}.StandardScaler")
-@patch(f"{STRATEGY_PATH}.KMeans")
+# Patch where StandardScaler and KMeans are imported/used (now in regime.py)
+@patch(f"{REGIME_PATH}.StandardScaler")
+@patch(f"{REGIME_PATH}.KMeans")
 def test_regime_detector_init(MockKMeans, MockStandardScaler):
     """Test MarketRegimeDetector initialization."""
     # Assume sklearn is available for this test
-    with patch(f"{STRATEGY_PATH}.SKLEARN_AVAILABLE_FOR_REGIME", True):
+    with patch(f"{REGIME_PATH}.SKLEARN_AVAILABLE_FOR_REGIME", True):
         detector = MarketRegimeDetector(n_regimes=4, lookback_window=30)
         assert detector.n_regimes == 4
         assert detector.lookback_window == 30
@@ -454,14 +478,14 @@ def test_regime_detector_init(MockKMeans, MockStandardScaler):
         assert detector.is_fitted is False
 
 
-@patch(f"{STRATEGY_PATH}.StandardScaler")
-@patch(f"{STRATEGY_PATH}.KMeans")
+@patch(f"{REGIME_PATH}.StandardScaler")
+@patch(f"{REGIME_PATH}.KMeans")
 def test_regime_detector_detect_clustering(
     MockKMeans, MockStandardScaler, sample_regime_features
 ):
     """Test regime detection using clustering."""
     # Assume sklearn is available
-    with patch(f"{STRATEGY_PATH}.SKLEARN_AVAILABLE_FOR_REGIME", True):
+    with patch(f"{REGIME_PATH}.SKLEARN_AVAILABLE_FOR_REGIME", True):
         # Setup mocks
         mock_scaler_instance = MagicMock()
         mock_scaler_instance.fit_transform.return_value = np.random.rand(
@@ -499,8 +523,9 @@ def test_regime_detector_detect_clustering(
         assert len(detector.regime_history) == 1  # Check history stored
 
 
-@patch(f"{STRATEGY_PATH}.SKLEARN_AVAILABLE_FOR_REGIME", False)
-@patch(f"{STRATEGY_PATH}.logger")
+# Patch where SKLEARN_AVAILABLE_FOR_REGIME is checked (regime.py)
+@patch(f"{REGIME_PATH}.SKLEARN_AVAILABLE_FOR_REGIME", False)
+@patch(f"{REGIME_PATH}.logger")  # Assuming logger is used in regime.py
 def test_regime_detector_clustering_unavailable(mock_logger, sample_regime_features):
     """Test regime detection when clustering is unavailable."""
     detector = MarketRegimeDetector(use_clustering=True)
@@ -509,7 +534,7 @@ def test_regime_detector_clustering_unavailable(mock_logger, sample_regime_featu
     mock_logger.error.assert_called_with("Clustering requires scikit-learn.")
 
 
-@patch(f"{STRATEGY_PATH}.logger")
+@patch(f"{REGIME_PATH}.logger")  # Assuming logger is used in regime.py
 def test_regime_detector_insufficient_data(mock_logger, sample_regime_features):
     """Test regime detection with insufficient data for lookback."""
     detector = MarketRegimeDetector(lookback_window=200)  # Window > data length
@@ -520,7 +545,7 @@ def test_regime_detector_insufficient_data(mock_logger, sample_regime_features):
     )
 
 
-@patch(f"{STRATEGY_PATH}.logger")
+@patch(f"{REGIME_PATH}.logger")  # Assuming logger is used in regime.py
 def test_regime_detector_missing_features(mock_logger, sample_regime_features):
     """Test regime detection when required features are missing."""
     detector = MarketRegimeDetector(
@@ -540,7 +565,7 @@ def test_regime_detector_missing_features(mock_logger, sample_regime_features):
 def mock_strategy_config(tmp_path):
     """Provides a StrategyConfig instance with mocks."""
     # Mock os.makedirs within the fixture scope
-    with patch(f"{STRATEGY_PATH}.os.makedirs"):
+    with patch(f"{CONFIG_PATH}.os.makedirs"):  # Patch where StrategyConfig is defined
         config = StrategyConfig(output_dir=str(tmp_path / "strategy_run"))
     return config
 
@@ -557,7 +582,8 @@ def mock_data_loader_instance():
     return loader
 
 
-@patch(f"{STRATEGY_PATH}.DataLoader")
+# Patch where DataLoader is imported/used (now in core.py)
+@patch(f"{CORE_PATH}.DataLoader")
 def test_enhanced_strategy_init(MockDataLoader, mock_strategy_config):
     """Test EnhancedTradingStrategy initialization."""
     mock_loader_instance = MagicMock()
@@ -567,9 +593,8 @@ def test_enhanced_strategy_init(MockDataLoader, mock_strategy_config):
 
     assert strategy.config is mock_strategy_config
     assert strategy.data_loader is mock_loader_instance
-    assert isinstance(
-        strategy.regime_detector, MarketRegimeDetector
-    )  # Check detector created
+    # By default, market_regime_config.enabled is False, so detector should be None
+    assert strategy.market_regime_detector is None
     assert strategy.models == {}
     assert strategy.predictors == {}
     assert strategy.signal_generators == {}
@@ -577,7 +602,7 @@ def test_enhanced_strategy_init(MockDataLoader, mock_strategy_config):
     MockDataLoader.assert_called_once()  # Check DataLoader was instantiated
 
 
-@patch(f"{STRATEGY_PATH}.DataLoader")
+@patch(f"{CORE_PATH}.DataLoader")
 def test_enhanced_strategy_init_no_regime(MockDataLoader, mock_strategy_config):
     """Test EnhancedTradingStrategy initialization with regime detection disabled."""
     mock_strategy_config.model_config.regime_adaptation_enabled = False
@@ -585,10 +610,10 @@ def test_enhanced_strategy_init_no_regime(MockDataLoader, mock_strategy_config):
     MockDataLoader.return_value = mock_loader_instance
 
     strategy = EnhancedTradingStrategy(mock_strategy_config)
-    assert strategy.regime_detector is None  # Should be None
+    assert strategy.market_regime_detector is None  # Correct attribute name
 
 
-@patch(f"{STRATEGY_PATH}.DataLoader")
+@patch(f"{CORE_PATH}.DataLoader")
 def test_enhanced_strategy_load_data_success(
     MockDataLoader, mock_strategy_config, mock_data_loader_instance
 ):
@@ -613,7 +638,7 @@ def test_enhanced_strategy_load_data_success(
     assert "close" in data.columns
 
 
-@patch(f"{STRATEGY_PATH}.DataLoader")
+@patch(f"{CORE_PATH}.DataLoader")
 def test_enhanced_strategy_load_data_fail(
     MockDataLoader, mock_strategy_config, mock_data_loader_instance
 ):

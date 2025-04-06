@@ -9,7 +9,7 @@ from typing import Any, Dict, Optional
 import pandas as pd
 
 # Import trade management
-from .simulation import TradeManager
+from .manager import TradeManager
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -36,6 +36,8 @@ def backtest_strategy(
     output_dir: Optional[str] = None,
     output_trades_path: Optional[str] = None,
     save_detailed_report: bool = False,
+    regime: Optional[int] = None,  # Added regime parameter
+    regime_actions: Optional[Dict] = None,  # Added regime actions dict
 ) -> Dict[str, Any]:
     """
     Advanced vectorized backtest function with comprehensive risk management.
@@ -64,6 +66,8 @@ def backtest_strategy(
         output_dir: Directory to save report files.
         output_trades_path: Specific path to save trade log CSV.
         save_detailed_report: Whether to save a detailed performance report.
+        regime: The market regime applicable during this backtest period.
+        regime_actions: Dictionary mapping regime index to action string.
 
     Returns:
         Dictionary summarizing the backtest performance.
@@ -74,9 +78,8 @@ def backtest_strategy(
     required_cols = ["high", "low", "close", "prediction"]
 
     # Add ATR column to required if dynamic stops are used
-    if use_dynamic_stops and (
-        atr_multiplier_sl is not None or atr_multiplier_tp is not None
-    ):
+    # Add ATR column to required only if dynamic stops are explicitly enabled
+    if use_dynamic_stops:
         required_cols.append(atr_col)
 
     missing = [c for c in required_cols if c not in data_with_predictions.columns]
@@ -140,10 +143,13 @@ def backtest_strategy(
     for i in range(1, len(df)):
         current_idx = df.index[i]
 
-        # Current market data
-        current_close = df.iloc[i]["close"]
-        # current_high = df.iloc[i]["high"] # Removed unused variable
-        # current_low = df.iloc[i]["low"] # Removed unused variable
+        # Current market data (at the start of the bar)
+        current_open = df.iloc[i]["open"]
+        current_close = df.iloc[i][
+            "close"
+        ]  # Still needed for updates and volatility calc? Check usage.
+        # current_high = df.iloc[i]["high"] # Potentially needed for updates if intra-bar logic added
+        # current_low = df.iloc[i]["low"] # Potentially needed for updates if intra-bar logic added
 
         # Previous data for decisions
         prev_signal = df.iloc[i - 1]["prediction"]
@@ -160,48 +166,54 @@ def backtest_strategy(
         # Process signal for new trades
         # Process signal from PREVIOUS bar to decide action for CURRENT bar
         if prev_signal != 0:  # Non-zero signal from previous bar
-            # Calculate stop loss and take profit prices based on CURRENT close
+            # Calculate stop loss and take profit prices based on CURRENT open
             if use_dynamic_stops and atr_col in df.columns:
-                # Use ATR from the PREVIOUS bar to set stops for entry at CURRENT bar
-                atr_value = df.iloc[i - 1][atr_col]
+                # Use ATR from the PREVIOUS bar to set stops for entry at CURRENT bar's open
+                atr_value = df.iloc[i - 1][
+                    atr_col
+                ]  # Correct: Use info available before bar i
 
                 if prev_signal == 1:  # Long signal
                     stop_loss = (
-                        current_close
-                        - (atr_multiplier_sl * atr_value)  # Based on current_close
+                        current_open  # Use open price as reference
+                        - (atr_multiplier_sl * atr_value)
                         if atr_multiplier_sl is not None
                         else None
                     )
                     take_profit = (
-                        current_close
-                        + (atr_multiplier_tp * atr_value)  # Based on current_close
+                        current_open  # Use open price as reference
+                        + (atr_multiplier_tp * atr_value)
                         if atr_multiplier_tp is not None
                         else None
                     )
                 else:  # Short signal
                     stop_loss = (
-                        current_close
-                        + (atr_multiplier_sl * atr_value)  # Based on current_close
+                        current_open  # Use open price as reference
+                        + (atr_multiplier_sl * atr_value)
                         if atr_multiplier_sl is not None
                         else None
                     )
                     take_profit = (
-                        current_close
-                        - (atr_multiplier_tp * atr_value)  # Based on current_close
+                        current_open  # Use open price as reference
+                        - (atr_multiplier_tp * atr_value)
                         if atr_multiplier_tp is not None
                         else None
                     )
             else:
-                # Default fixed percentage stops based on CURRENT close
+                # Default fixed percentage stops based on CURRENT open
                 if prev_signal == 1:  # Long signal
-                    stop_loss = current_close * (1 - 0.01)
-                    take_profit = current_close * (1 + 0.02)
+                    stop_loss = current_open * (1 - 0.01)  # Use open price as reference
+                    take_profit = current_open * (
+                        1 + 0.02
+                    )  # Use open price as reference
                 else:  # Short signal
-                    stop_loss = current_close * (1 + 0.01)
-                    take_profit = current_close * (1 - 0.02)
+                    stop_loss = current_open * (1 + 0.01)  # Use open price as reference
+                    take_profit = current_open * (
+                        1 - 0.02
+                    )  # Use open price as reference
 
-            # Calculate entry price based on CURRENT close with slippage
-            entry_price = current_close * (1 + slippage_pct_per_trade * prev_signal)
+            # Calculate entry price based on CURRENT open with slippage
+            entry_price = current_open * (1 + slippage_pct_per_trade * prev_signal)
 
             # Convert signal to signal strength (simplistic approach)
             signal_strength = max(0.5, min(1.0, abs(prev_signal) * signal_threshold))
@@ -213,6 +225,28 @@ def backtest_strategy(
             )
 
             if can_enter:
+                # --- Apply Regime Action ---
+                original_risk_per_trade = trade_manager.risk_per_trade  # Store original
+                action = None
+                if regime is not None and regime_actions:
+                    action = regime_actions.get(int(regime))  # Ensure regime is int key
+                    if action == "reduce_risk":
+                        # Example: Halve the risk for this trade
+                        modified_risk = original_risk_per_trade / 2.0
+                        trade_manager.risk_per_trade = modified_risk
+                        logger.debug(
+                            f"Regime {regime} -> Action: 'reduce_risk'. Temporarily setting risk/trade to {modified_risk:.4f}"
+                        )
+                    # 'no_trade' should have been handled in signal generation, but double-check? No, rely on signals.
+                    # 'trade_normal' requires no change.
+
+                # Add regime to tags
+                trade_tags = ["backtest"]
+                if regime is not None:
+                    trade_tags.append(f"regime_{regime}")
+                    if action:
+                        trade_tags.append(f"action_{action}")
+
                 # Apply transaction cost to entry
                 trade_manager.capital -= trade_manager.capital * transaction_cost_pct
 
@@ -226,8 +260,12 @@ def backtest_strategy(
                     take_profit=take_profit,
                     signal_strength=signal_strength,
                     volatility=current_volatility,  # Volatility at current bar
-                    tags=["backtest"],
+                    tags=trade_tags,  # Use updated tags
                 )
+
+                # Restore original risk setting if it was modified
+                if trade_manager.risk_per_trade != original_risk_per_trade:
+                    trade_manager.risk_per_trade = original_risk_per_trade
 
         # Update benchmark if tracking
         if benchmark_values is not None:

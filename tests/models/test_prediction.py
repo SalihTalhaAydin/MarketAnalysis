@@ -9,18 +9,21 @@ import pytest
 from sklearn.compose import ColumnTransformer
 
 # Import functions and classes to test
-from market_ml_model.models.prediction import (
+# Import functions and classes to test from new locations
+from market_ml_model.models.predictor import (
     ModelPredictorBase,
     get_confidence_levels,
     load_model,
     predict_proba,
-    predict_with_model,
     predict_with_threshold,
     preprocess_features,
 )
+from market_ml_model.models.utils import predict_with_model
 
 # Define path for patching
-PREDICTION_PATH = "market_ml_model.models.prediction"
+# Define paths for patching within the refactored modules
+PREDICTOR_PATH = "market_ml_model.models.predictor"
+UTILS_PATH = "market_ml_model.models.utils"
 
 # --- Fixtures ---
 
@@ -112,29 +115,34 @@ def sample_metadata(mock_preprocessor_object):
 @pytest.fixture
 def mock_os_path(mocker):
     """Mocks os.path functions."""
-    mock_isdir = mocker.patch(f"{PREDICTION_PATH}.os.path.isdir")
-    mock_isfile = mocker.patch(f"{PREDICTION_PATH}.os.path.isfile")
-    mock_exists = mocker.patch(f"{PREDICTION_PATH}.os.path.exists")
+    # load_model is in predictor.py, so patch os there
+    mock_isdir = mocker.patch(f"{PREDICTOR_PATH}.os.path.isdir")
+    mock_isfile = mocker.patch(f"{PREDICTOR_PATH}.os.path.isfile")
+    mock_exists = mocker.patch(f"{PREDICTOR_PATH}.os.path.exists")
     return mock_isdir, mock_isfile, mock_exists
 
 
 @pytest.fixture
 def mock_joblib_load(mocker):
     """Mocks joblib.load."""
-    return mocker.patch(f"{PREDICTION_PATH}.joblib.load")
+    # load_model is in predictor.py
+    return mocker.patch(f"{PREDICTOR_PATH}.joblib.load")
 
 
 @pytest.fixture
 def mock_json_load(mocker):
     """Mocks json.load."""
-    return mocker.patch(f"{PREDICTION_PATH}.json.load")
+    # load_model is in predictor.py
+    return mocker.patch(f"{PREDICTOR_PATH}.json.load")
 
 
 # --- Tests for load_model ---
 
 
 @patch(
-    f"{PREDICTION_PATH}.open", new_callable=mock_open
+    # load_model is in predictor.py
+    f"{PREDICTOR_PATH}.open",
+    new_callable=mock_open,
 )  # Keep mock_open for file handle check
 def test_load_model_from_directory(
     mock_open_func,
@@ -288,7 +296,8 @@ def test_preprocess_features_missing_input_feature(
 ):
     """Test warning when an expected selected feature is missing from input."""
     selected_features = ["feat2_selected", "feat3_selected", "MISSING"]
-    with patch(f"{PREDICTION_PATH}.logger") as mock_logger:
+    # preprocess_features is in predictor.py
+    with patch(f"{PREDICTOR_PATH}.logger") as mock_logger:
         preprocess_features(
             sample_features, mock_preprocessor_object, selected_features
         )
@@ -393,7 +402,8 @@ def test_get_confidence_levels(sample_eval_data):  # Use correct fixture name
 # --- Tests for ModelPredictorBase ---
 
 
-@patch(f"{PREDICTION_PATH}.load_model")
+# ModelPredictorBase is in predictor.py, patch its dependency load_model there
+@patch(f"{PREDICTOR_PATH}.load_model")
 def test_model_predictor_init_success(
     mock_load, mock_model_object, mock_preprocessor_object, sample_metadata
 ):  # Add preprocessor to args
@@ -414,7 +424,7 @@ def test_model_predictor_init_success(
     mock_load.assert_called_once_with("/fake/path")
 
 
-@patch(f"{PREDICTION_PATH}.load_model")
+@patch(f"{PREDICTOR_PATH}.load_model")
 def test_model_predictor_init_fail(mock_load):
     """Test initialization failure when load_model fails."""
     mock_load.return_value = (None, {})
@@ -422,8 +432,9 @@ def test_model_predictor_init_fail(mock_load):
         ModelPredictorBase("/fake/path")
 
 
-@patch(f"{PREDICTION_PATH}.load_model")
-@patch(f"{PREDICTION_PATH}.preprocess_features")
+# ModelPredictorBase is in predictor.py, patch its dependencies there
+@patch(f"{PREDICTOR_PATH}.load_model")
+@patch(f"{PREDICTOR_PATH}.preprocess_features")
 def test_model_predictor_predict(
     mock_preprocess,
     mock_load,
@@ -460,8 +471,9 @@ def test_model_predictor_predict(
     assert predictions is not None
 
 
-@patch(f"{PREDICTION_PATH}.load_model")
-@patch(f"{PREDICTION_PATH}.predict_proba")
+# ModelPredictorBase is in predictor.py, patch its dependencies there
+@patch(f"{PREDICTOR_PATH}.load_model")
+@patch(f"{PREDICTOR_PATH}.predict_proba")
 def test_model_predictor_predict_proba(
     mock_predict_proba,
     mock_load,
@@ -497,7 +509,8 @@ def test_model_predictor_predict_proba(
 # --- Tests for predict_with_model ---
 
 
-@patch(f"{PREDICTION_PATH}.ModelPredictorBase")
+# predict_with_model is in utils.py, patch its dependency ModelPredictorBase there
+@patch(f"{UTILS_PATH}.ModelPredictorBase")
 def test_predict_with_model_success(MockPredictor, sample_features):
     """Test the high-level predict_with_model function."""
     # Mock the predictor instance and its methods
@@ -522,12 +535,17 @@ def test_predict_with_model_success(MockPredictor, sample_features):
     assert isinstance(result_df, pd.DataFrame)
     assert "prediction" in result_df.columns
     assert "confidence" in result_df.columns
-    assert list(result_df.columns) == ["Class0", "Class1", "prediction", "confidence"]
+    assert list(result_df.columns) == [
+        "probability_Class0",
+        "probability_Class1",
+        "prediction",
+        "confidence",
+    ]  # Updated column names
     assert result_df["prediction"].iloc[0] == 1  # Based on mock_probs[0]
     assert result_df["prediction"].iloc[1] == 0  # Based on mock_probs[1]
 
 
-@patch(f"{PREDICTION_PATH}.ModelPredictorBase")
+@patch(f"{UTILS_PATH}.ModelPredictorBase")
 def test_predict_with_model_load_fail(MockPredictor, sample_features):
     """Test predict_with_model when model loading fails."""
     MockPredictor.side_effect = ValueError("Load failed")
@@ -535,7 +553,7 @@ def test_predict_with_model_load_fail(MockPredictor, sample_features):
     assert result_df is None
 
 
-@patch(f"{PREDICTION_PATH}.ModelPredictorBase")
+@patch(f"{UTILS_PATH}.ModelPredictorBase")
 def test_predict_with_model_proba_fail(MockPredictor, sample_features):
     """Test predict_with_model when predict_proba fails."""
     mock_predictor_instance = MagicMock()

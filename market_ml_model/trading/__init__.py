@@ -1,14 +1,22 @@
+# market_ml_model/trading/__init__.py
 """
-Trading simulation and backtesting module.
+Trading Module Initialization
+
+This module provides classes and functions for trade simulation,
+management, position sizing, and backtesting.
 """
 
-from .backtest import backtest_strategy
-from .position.position_sizing import calculate_position_size
-from .simulation import Trade, TradeManager
+# Import key classes from submodules
+from .trade import Trade
+from .manager import TradeManager
+# Import other components like backtest, position sizing if they exist and are needed at this level
+# from .backtest import backtest_strategy
+# from .position import calculate_position_size
 
+# Define what gets imported with 'from market_ml_model.trading import *'
 __all__ = [
-    "TradeManager",
     "Trade",
-    "backtest_strategy",
-    "calculate_position_size",
+    "TradeManager",
+    # "backtest_strategy",
+    # "calculate_position_size",
 ]

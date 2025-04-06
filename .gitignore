@@ -123,3 +123,6 @@ strategy_results/
 # Generated dependency lock files
 requirements.txt
 requirements-dev.txt
+
+# Ignore specific executables
+rustup-init.exe

@@ -2,8 +2,14 @@
 # This file demonstrates how to configure a trading strategy.
 
 # General Strategy Settings
-strategy_name: "Example_Momentum_Strategy"
-description: "A sample strategy using RSI and SMA features with a RandomForest model."
+strategy_name: "RSI_Mean_Reversion_Strategy"
+description: "A simple RSI Mean Reversion strategy (Buy < 30, Sell > 70)."
+strategy_type: "rsi_mean_reversion" # Select the RSI strategy logic
+# sma_short_period: 50           # Commented out DMA param
+# sma_long_period: 200          # Commented out DMA param
+rsi_period: 14                  # RSI lookback period
+rsi_lower_threshold: 30         # RSI lower threshold for buy signal
+rsi_upper_threshold: 70         # RSI upper threshold for sell/exit signal
 log_level: "INFO" # Options: DEBUG, INFO, WARNING, ERROR, CRITICAL
 results_dir: "strategy_results" # Directory to save backtest results, plots, etc.
 data_start_date: "2018-01-01" # Overall start date for data loading
@@ -18,114 +24,180 @@ assets:
     # Optional: Specify timeframe if needed
     # timeframe: "1d" # e.g., '1m', '5m', '1h', '1d'
 
-# Feature Engineering Configuration (Corresponds to FeatureConfig object)
-feature_config:
-  # Technical Indicators (using pandas-ta or ta library conventions)
-  technical_indicators:
-    - indicator: "rsi"
-      length: 14
-    - indicator: "sma"
-      length: 20
-    - indicator: "sma"
-      length: 50
-    - indicator: "atr"
-      length: 14
-    # Add more indicators as needed...
-
-  # Target variable config (Corresponds to FeatureConfig attributes)
-  target_type: "triple_barrier" # 'triple_barrier', 'directional'
-  # Parameters for Triple Barrier (if target_type is triple_barrier)
-  atr_multiplier_tp: 1.0 # Profit Take multiple (from pt_sl[0])
-  atr_multiplier_sl: 1.0 # Stop Loss multiple (from pt_sl[1])
-  max_holding_period: 10 # Max holding period in bars
-  # min_return: 0.001 # Not directly used by FeatureConfig init
-  # volatility_lookback: 20 # Not directly used by FeatureConfig init
-  # volatility_target: 0.01 # Not directly used by FeatureConfig init
-
-  # Feature Scaling/Normalization (optional) - Removed as not part of FeatureConfig init
-  # scaling:
-  #   method: "StandardScaler" # e.g., "StandardScaler", "MinMaxScaler", null
-  #   apply_to: ["rsi", "sma_20", "sma_50"] # List of features to scale, or 'all'
-
-# Model Configuration (Corresponds to ModelConfig object)
-model_config:
-  model_type: "random_forest" # Use the key registered in model_factory.py
-  # Signal Generation Adjustments
-  probability_threshold: 0.5001 # Set very low threshold to force signals for testing
-  signal_trend_filter_ma: null # Disable trend filter
-  signal_volatility_filter_atr: null # Disable volatility filter
-  # Original model params (adjust if needed for lightgbm) - Removed as not part of ModelConfig init
-  # params: # Parameters specific to the chosen model type
-  #   n_estimators: 100
-  #   max_depth: 10
-  #   min_samples_leaf: 5
-  #   random_state: 42
-  #   class_weight: "balanced" # Handle class imbalance
-  #   # Add other relevant scikit-learn/xgboost/etc. parameters
-
-  # Feature Selection (optional) - Removed as not part of ModelConfig init (handled in FeatureConfig)
-  # feature_selection:
-  #   method: null # e.g., "SelectKBest", "RFE", null
-  #   params: {} # Parameters for the selection method
-
-  # Hyperparameter Optimization (optional) - Keep disabled for now
-  optimize_hyperparams: false # Corresponds to ModelConfig attribute
-  optimization_method: "random" # Default if optimize_hyperparams is true
-  optimization_trials: 25 # Default if optimize_hyperparams is true
-  # hyperopt: # This sub-section isn't directly used by ModelConfig
-  #   enabled: false # Commented out - handled by optimize_hyperparams above
-  #   method: "optuna" # e.g., "optuna", "hyperopt"
-  #   n_trials: 50
-  #   metric: "accuracy" # Metric to optimize (e.g., 'accuracy', 'f1', 'roc_auc')
-  #   direction: "maximize" # 'maximize' or 'minimize'
-  #   # Define search space if needed (specific to optuna/hyperopt)
-  #   search_space: {}
-
-# Walk-Forward Validation Configuration # Ensure this starts at column 0
-walk_forward:
-  enabled: true
-  train_window_size: 252 # Number of periods (e.g., days) for initial training
-  test_window_size: 63 # Number of periods for testing (out-of-sample)
-  step_size: 21 # How many periods to step forward each iteration
-  retrain_every_step: true # Whether to retrain the model at each step
-  purge_window_size: 5 # Gap between train and test to prevent lookahead bias
-  expanding_window: false # Use expanding window instead of sliding window for training
+# # Feature Engineering Configuration (Corresponds to FeatureConfig object) - Commented out for DMA
+# feature_config:
+#   # Technical Indicators (using pandas-ta or ta library conventions)
+#   technical_indicators:
+#     - indicator: "rsi"
+#       length: 14
+#     - indicator: "sma"
+#       length: 20
+#     - indicator: "sma"
+#       length: 50
+#     - indicator: "atr"
+#       length: 14
+#     - indicator: "macd"
+#       fast: 12  # Corrected parameter name for pandas-ta
+#       slow: 26  # Corrected parameter name for pandas-ta
+#       signal: 9 # Corrected parameter name for pandas-ta
+#     - indicator: "bollinger_bands"
+#       length: 20 # Corrected parameter name for pandas-ta
+#       std: 2    # Corrected parameter name for pandas-ta
+#     - indicator: "adx"
+#       window: 14
+#     - indicator: "obv"
+#     - indicator: "mfi"
+#       window: 14
+#     - indicator: "ema"
+#       length: 9
+#     - indicator: "ema"
+#       length: 21
+#     - indicator: "ema"
+#       length: 50
+#     # Add more indicators as needed...
+#
+#   # Enable/disable additional feature categories
+#   # fractal_window: 5 # Optional: Specify window if fractal_features is true (defaults to 5)
+#
+#   # Target variable config (Corresponds to FeatureConfig attributes)
+#   target_type: "triple_barrier" # 'triple_barrier', 'directional'
+#   # Parameters for Triple Barrier (if target_type is triple_barrier)
+#   atr_multiplier_tp: 2.0 # Profit Take multiple (from pt_sl[0]) - Adjusted for 2:1 ratio
+#   atr_multiplier_sl: 1.0 # Stop Loss multiple (from pt_sl[1])
+#   max_holding_period: 15 # Max holding period in bars
+#   # min_return: 0.001 # Not directly used by FeatureConfig init
+#   # volatility_lookback: 20 # Not directly used by FeatureConfig init
+#   # volatility_target: 0.01 # Not directly used by FeatureConfig init
+#   # Flags for new feature categories (added in Subtask 12)
+#   volatility_features: true
+#   regime_features: true
+#   momentum_features: true
+#   fractal_features: true # Enable fractals as well
+#
+#   # Feature Selection Configuration
+#   feature_selection_method:
+#     enabled: true # Whether to perform feature selection
+#     # Method for feature selection. Options:
+#     # 'importance': Use RandomForest feature importance.
+#     # 'mutual_info': Use mutual information (SelectKBest).
+#     # 'rfe': Use Recursive Feature Elimination (with Logistic Regression).
+#     # 'pca': Use Principal Component Analysis (dimensionality reduction, changes features).
+#     # 'model': Use feature importance from a specified model (e.g., lightgbm, xgboost).
+#     # null or 'none': Disable feature selection.
+#     method: "importance" # Default method
+#     params: # Parameters specific to the chosen method
+#       # For 'importance', 'mutual_info', 'rfe', 'model':
+#       n_features: 25 # Target number of features to select (adjust as needed)
+#       # For 'importance' (alternative to n_features):
+#       # threshold: 0.01 # Minimum importance threshold
+#       # For 'rfe':
+#       # step: 1 # Number of features to remove at each iteration
+#       # For 'pca':
+#       # n_components: 30 # Number of principal components
+#       # For 'model':
+#       # model_type: "lightgbm" # Model to use ('lightgbm' or 'xgboost')
+#       # threshold: "median" # Threshold for SelectFromModel
+#
+# # Feature Differencing (optional) - Commented out for DMA
+# # differencing:
+# #   apply: false # Set to true to enable differencing
+# #   period: 1 # Differencing period (usually 1)
+# #   # List of features to apply differencing to. If empty or null, applies to none.
+# #   # Example: ['sma_length20', 'sma_length50', 'ema_length12']
+# #   features: []
+#
+# # Feature Scaling (optional) - Commented out for DMA
+# # scaling:
+# #   # Options: 'StandardScaler', 'MinMaxScaler', 'RobustScaler', 'None' or null
+# #   method: "StandardScaler"
+# #   # Note: Scaling is typically applied *after* differencing if both are enabled.
+# #   #   apply_to: ["rsi", "sma_20", "sma_50"] # List of features to scale, or 'all'
+#
+# # Model Configuration (Corresponds to ModelConfig object) - Commented out for DMA
+# # model_config:
+# #   model_type: "lightgbm" # Use the key registered in model_factory.py
+# #   # Signal Generation Adjustments
+# #   probability_threshold: 0.1   # Significantly lowered threshold to generate more trades
+# #   signal_trend_filter_ma: null # Disable trend filter
+# #   signal_volatility_filter_atr: null # Disable volatility filter
+# #   # Original model params (adjust if needed for lightgbm) - Removed as not part of ModelConfig init
+# #   # params: # Parameters specific to the chosen model type
+# #   #   n_estimators: 100
+# #   #   max_depth: 10
+# #   #   min_samples_leaf: 5
+# #   #   random_state: 42
+# #   #   class_weight: "balanced" # Handle class imbalance
+# #   #   # Add other relevant scikit-learn/xgboost/etc. parameters
+# #
+# #   # Feature Selection (optional) - Removed as not part of ModelConfig init (handled in FeatureConfig)
+# #   # feature_selection:
+# #   #   method: null # e.g., "SelectKBest", "RFE", null
+# #   #   params: {} # Parameters for the selection method
+# #
+# #   # Hyperparameter Optimization (optional) - Keep disabled for now
+# #   optimize_hyperparams: false # Corresponds to ModelConfig attribute
+# #   # optimization_method: "bayesian" # Default if optimize_hyperparams is true
+# #   # optimization_trials: 100 # Default if optimize_hyperparams is true
+# #   # Search space removed as HPO is disabled and model is Logistic Regression
+# #   # hyperopt: # This sub-section isn't directly used by ModelConfig
+# #   #   enabled: false # Commented out - handled by optimize_hyperparams above
+# #   #   method: "optuna" # e.g., "optuna", "hyperopt"
+# #   #   n_trials: 50
+# #   #   metric: "accuracy" # Metric to optimize (e.g., 'accuracy', 'f1', 'roc_auc')
+# #   #   direction: "maximize" # 'maximize' or 'minimize'
+# #   #   # Define search space if needed (specific to optuna/hyperopt)
+# #   #   search_space: {}
+#
+# # Walk-Forward Validation Configuration # Ensure this starts at column 0 - Commented out for DMA
+# # walk_forward:
+# #   enabled: true
+# #   train_window_size: 252 # Number of periods (e.g., days) for initial training
+# #   test_window_size: 63 # Number of periods for testing (out-of-sample)
+# #   step_size: 21 # How many periods to step forward each iteration
+# #   retrain_every_step: true # Whether to retrain the model at each step
+# #   purge_window_size: 5 # Gap between train and test to prevent lookahead bias
+# #   expanding_window: false # Use expanding window instead of sliding window for training
 
 # Backtesting / Trading Simulation Configuration
 trading:
   initial_capital: 100000.0
   commission_bps: 2.0 # Commission in basis points (e.g., 2.0 = 0.02%)
   slippage_bps: 1.0 # Slippage estimate in basis points
+  use_dynamic_stops: false # Keep dynamic stops disabled for this simple RSI strategy
   position_sizing:
-    method: "fixed_fractional" # e.g., "fixed_fractional", "fixed_amount"
+    method: "fixed_fractional" # Use fixed fractional sizing
     params:
-      fraction: 0.10 # Fraction of capital to risk per trade
+      fraction: 0.10 # Risk 10% of capital per trade (adjust as needed)
       # amount: 1000 # Fixed amount per trade (if using 'fixed_amount')
   stop_loss:
-    method: "atr" # e.g., "atr", "fixed_percentage", null
-    params:
-      multiplier: 2.0 # ATR multiplier
-      # percentage: 0.05 # Fixed percentage (if using 'fixed_percentage')
+    method: null # No explicit stop loss for this simple version
+    # params:
+    #   multiplier: 1.0 # Example: ATR multiplier if enabled
+    #   # percentage: 0.05 # Fixed percentage (if using 'fixed_percentage')
   take_profit:
-    method: "atr" # e.g., "atr", "fixed_percentage", null
-    params:
-      multiplier: 3.0 # ATR multiplier
-      # percentage: 0.10 # Fixed percentage (if using 'fixed_percentage')
+    method: null # No explicit take profit (exit is based on RSI crossing upper threshold)
+    # params:
+    #   multiplier: 2.0 # Example: ATR multiplier if enabled
+    #   # percentage: 0.10 # Fixed percentage (if using 'fixed_percentage')
 
-# Market Regime Detection (Optional)
-market_regime:
-  enabled: false
-  method: "volatility_clustering" # e.g., "volatility_clustering", "rule_based_sma"
-  params: # Parameters specific to the chosen method
-    # For volatility_clustering:
-    n_clusters: 3
-    volatility_indicator: "atr"
-    volatility_period: 20
-    # For rule_based_sma:
-    # short_sma: 20
-    # long_sma: 50
-  # Define how regimes affect trading (optional)
-  # regime_actions:
-  #   regime_0: "trade_long_only"
-  #   regime_1: "trade_short_only"
-  #   regime_2: "no_trade"
+# # Market Regime Detection (Optional) - Commented out for DMA
+# market_regime:
+#   enabled: true
+#   method: "volatility_clustering" # e.g., "volatility_clustering", "rule_based_sma"
+#   params: # Parameters specific to the chosen method
+#     # For volatility_clustering:
+#     n_clusters: 3
+#     volatility_indicator: "atr"
+#     volatility_period: 20
+#   regime_actions: # Define actions based on detected regime index (0, 1, 2, ...)
+#     0: "trade_normal"  # Example: Low volatility regime - trade normally
+#     1: "reduce_risk"   # Example: Medium volatility regime - reduce position size (e.g., by half)
+#     2: "no_trade"      # Example: High volatility regime - avoid trading
+#     # For rule_based_sma:
+#     # short_sma: 20
+#     # long_sma: 50
+#   # Define how regimes affect trading (optional)
+#   # regime_actions:
+#   #   regime_0: "trade_long_only"
+#   #   regime_1: "trade_short_only"
+#   #   regime_2: "no_trade"

@@ -7,6 +7,7 @@ from typing import Optional, Tuple
 
 import numpy as np
 import pandas as pd
+from matplotlib.axes import Axes  # Import Axes
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -139,33 +140,41 @@ def plot_equity_curve(
     equity_curve: pd.Series,
     benchmark_curve: Optional[pd.Series] = None,
     title: str = "Equity Curve",
-    figsize: Tuple[int, int] = (12, 6),  # Added figsize default
+    figsize: Tuple[int, int] = (12, 6),
     filename: Optional[str] = None,
+    ax: Optional[Axes] = None,  # Added ax parameter
 ) -> None:
     """
-    Plot equity curve and benchmark if available.
+    Plot equity curve and benchmark if available, optionally on a given Axes.
 
     Args:
         equity_curve: Series of equity values
         benchmark_curve: Optional benchmark equity curve
         title: Plot title
-        figsize: Figure size
-        filename: If provided, save plot to this file
+        figsize: Figure size (used only if ax is None)
+        filename: If provided, save plot to this file (used only if ax is None)
+        ax: Optional Matplotlib Axes object to plot on. If None, a new figure/axes is created.
     """
     if not PLOTTING_AVAILABLE:
         logger.warning("Plotting not available. Skipping equity curve plot.")
         return
 
-    plt.figure(figsize=figsize)
+    # Determine if we need to create a figure and axes
+    create_figure = ax is None
+    if create_figure:
+        fig, ax = plt.subplots(figsize=figsize)  # Create fig and ax if ax is None
+    else:
+        fig = ax.get_figure()  # Get the figure from the provided ax
 
-    # Plot strategy equity curve
-    plt.plot(equity_curve.index, equity_curve.values, label="Strategy", linewidth=2)
+    # Plot strategy equity curve using ax
+    ax.plot(equity_curve.index, equity_curve.values, label="Strategy", linewidth=2)
 
     # Add benchmark if available
     if benchmark_curve is not None:
         # Align benchmark to strategy index if necessary
+        # Align benchmark to strategy index if necessary
         aligned_benchmark = benchmark_curve.reindex(equity_curve.index).ffill()
-        plt.plot(
+        ax.plot(  # Use ax.plot
             aligned_benchmark.index,
             aligned_benchmark.values,
             label="Benchmark",
@@ -186,7 +195,8 @@ def plot_equity_curve(
         drawdowns = (wealth_index - peaks) / peaks
 
         # Plot drawdowns below the equity curve
-        plt.fill_between(
+        # Plot drawdowns below the equity curve using ax
+        ax.fill_between(  # Use ax.fill_between
             equity_curve.index,
             equity_curve.values,  # Start fill from equity curve
             equity_curve.values
@@ -197,20 +207,25 @@ def plot_equity_curve(
             label="Drawdown",
         )
 
-    plt.title(title)
-    plt.xlabel("Date")
-    plt.ylabel("Equity")
-    plt.legend()
-    plt.grid(alpha=0.3)
-    plt.tight_layout()  # Use tight_layout before saving/showing
+    # Set plot attributes using ax
+    ax.set_title(title)
+    ax.set_xlabel("Date")
+    ax.set_ylabel("Equity")
+    ax.legend()
+    ax.grid(alpha=0.3)
 
-    if filename:
-        plt.savefig(filename, dpi=300, bbox_inches="tight")
-        logger.info(f"Equity curve plot saved to {filename}")
-    else:
-        plt.show()
-
-    plt.close()
+    # Only manage figure layout/saving/showing/closing if we created it
+    if create_figure:
+        try:
+            fig.tight_layout()  # Use fig.tight_layout()
+            if filename:
+                fig.savefig(filename, dpi=300, bbox_inches="tight")  # Use fig.savefig()
+                logger.info(f"Equity curve plot saved to {filename}")
+            else:
+                plt.show()  # plt.show() is still okay here
+        finally:
+            # Ensure figure is closed even if saving/showing fails
+            plt.close(fig)  # Close the specific figure
 
 
 def plot_drawdowns(
@@ -284,7 +299,7 @@ def plot_drawdowns(
             dd_period.values,
             color=colors[i],
             linewidth=2,
-            label=f"DD {i+1}: {row['max_drawdown']:.2%}",
+            label=f"DD {i + 1}: {row['max_drawdown']:.2%}",
         )
 
         # Mark the lowest point
