@@ -12,8 +12,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import joblib
 import pandas as pd
 
-from .evaluation.metrics import compute_feature_importance
-from .evaluation.metrics import evaluate_classifier
+from .evaluation.metrics import compute_feature_importance, evaluate_classifier
 from .factory.model_factory import create_model
 from .feature_selection import select_features
 from .optimization.hyperparameters import optimize_hyperparameters
@@ -474,9 +473,9 @@ def train_classification_model(
                 "model_params_used": best_params,
                 "feature_selection_config": feature_selection_config,
                 "preprocessing_config": preprocessing_config,
-                "optimization_config": optimization_config
-                if optimize_hyperparams
-                else None,
+                "optimization_config": (
+                    optimization_config if optimize_hyperparams else None
+                ),
                 "selected_features_raw": selected_feature_names_raw,  # Save raw selected names
                 "processed_feature_names_final": final_feature_names,  # Save final names after processing
                 "test_size": test_size,

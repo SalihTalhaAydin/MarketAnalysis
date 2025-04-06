@@ -6,9 +6,9 @@ from typing import Dict, Optional
 # Import necessary components from the refactored modules
 from .config import StrategyConfig
 from .core import (
+    MODULES_AVAILABLE,  # Import MODULES_AVAILABLE check
     EnhancedTradingStrategy,
-    MODULES_AVAILABLE,
-)  # Import MODULES_AVAILABLE check
+)
 
 logger = logging.getLogger(__name__)
 

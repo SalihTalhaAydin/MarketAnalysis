@@ -15,10 +15,7 @@ logger = logging.getLogger(__name__)
 
 # Import scikit-learn with error handling
 try:
-    from sklearn.model_selection import (
-        GridSearchCV,
-        RandomizedSearchCV,
-    )
+    from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
 
     SKLEARN_AVAILABLE = True
 except ImportError:
