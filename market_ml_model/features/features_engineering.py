@@ -259,9 +259,11 @@ def engineer_features(df: pd.DataFrame, feature_config: Dict[str, Any]) -> pd.Da
         # Prioritize target_config setting, then indicator config, then default 10
         atr_period = target_config.get(
             "atr_period",
-            atr_period_from_indicators
-            if atr_period_from_indicators is not None
-            else 10,
+            (
+                atr_period_from_indicators
+                if atr_period_from_indicators is not None
+                else 10
+            ),
         )
         atr_col_name = f"ATRr_{atr_period}"  # Construct the column name dynamically
 

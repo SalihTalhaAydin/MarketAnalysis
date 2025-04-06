@@ -8,7 +8,7 @@ import pandas as pd
 
 # Import necessary components from other modules if needed
 # (predictor might be needed for validation, evaluation for metrics)
-from .predictor import preprocess_features, SKLEARN_AVAILABLE
+from .predictor import SKLEARN_AVAILABLE, preprocess_features
 
 # Import evaluation metrics if validate_model_predictions uses them
 try:
@@ -242,7 +242,9 @@ class SignalGenerator:
             else mc.get("signal_cooling_period", 3)
         )
 
-        self.last_signal_time = {}  # symbol -> timestamp (This state might be better managed outside)
+        self.last_signal_time = (
+            {}
+        )  # symbol -> timestamp (This state might be better managed outside)
 
         # --- Class Name to Signal Value Mapping ---
         self.class_names = class_names

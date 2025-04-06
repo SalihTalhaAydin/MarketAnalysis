@@ -4,8 +4,8 @@ from datetime import datetime
 import pandas as pd
 import pytest
 
-from market_ml_model.trading.trade import Trade
 from market_ml_model.trading.manager import TradeManager
+from market_ml_model.trading.trade import Trade
 
 # Define tolerance for floating point comparisons
 TOL = 1e-6
