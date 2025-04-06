@@ -31,7 +31,10 @@ except ImportError:
 # Assume these modules are available when running as part of the package
 try:
     # Data Loading
-    from ..data.loaders import DataLoader, DataLoaderConfig
+    from ..data.loaders import (
+        DataLoader,
+        DataLoaderConfig,
+    )  # Original import was load_data
 
     # Feature Engineering
     from ..features.features_engineering import engineer_features
@@ -43,28 +46,27 @@ try:
         ta = None  # Define ta as None if not available
 
     # Model Training & Prediction
+    from ..models.training import (
+        train_classification_model,
+    )  # Added for direct pipeline creation
     from ..models.predictor import (
         ModelPredictorBase,
         get_confidence_levels,
         predict_with_threshold,
     )
     from ..models.signals import SignalGenerator
-    from ..models.training import (
-        train_classification_model,
-    )  # Added for direct pipeline creation
+    from ..utils.visualization import plot_drawdowns, plot_equity_curve
 
     # Backtesting & Simulation
     from ..trading.backtest import backtest_strategy
 
     # Utils
-    # from ..utils.metrics import calculate_returns_metrics # Removed unused import
-    from ..utils.visualization import plot_drawdowns, plot_equity_curve
 
     # Regime Detection (Import the class from the new location)
-    from .regime import (  # Import necessary items from regime.py
-        SKLEARN_AVAILABLE_FOR_REGIME,
+    from .regime import (
         MarketRegimeDetector,
-    )
+        SKLEARN_AVAILABLE_FOR_REGIME,
+    )  # Import necessary items from regime.py
 
     MODULES_AVAILABLE = True
 except ImportError as e:
@@ -134,16 +136,16 @@ class EnhancedTradingStrategy:
                         False  # Disable if init fails
                     )
 
-        self.models: Dict[str, str] = (
-            {}
-        )  # Stores paths to saved models (asset_symbol[_regime_X] -> path)
+        self.models: Dict[
+            str, str
+        ] = {}  # Stores paths to saved models (asset_symbol[_regime_X] -> path)
         self.predictors: Dict[str, ModelPredictorBase] = {}  # Stores loaded predictors
-        self.signal_generators: Dict[str, SignalGenerator] = (
-            {}
-        )  # Stores signal generators per asset/model_key
-        self.results: Dict[str, Any] = (
-            {}
-        )  # Stores results per asset or walk-forward step
+        self.signal_generators: Dict[
+            str, SignalGenerator
+        ] = {}  # Stores signal generators per asset/model_key
+        self.results: Dict[
+            str, Any
+        ] = {}  # Stores results per asset or walk-forward step
 
         # Set logging level based on debug mode
         log_level = logging.DEBUG if config.debug_mode else logging.INFO
@@ -1078,11 +1080,9 @@ class EnhancedTradingStrategy:
                     and isinstance(
                         train_data.index, pd.DatetimeIndex
                     )  # Check if train_features_raw exists (ML path)
-                    else (
-                        full_data.index[train_start_idx].isoformat()
-                        if isinstance(full_data.index, pd.DatetimeIndex)
-                        else train_start_idx
-                    )
+                    else full_data.index[train_start_idx].isoformat()
+                    if isinstance(full_data.index, pd.DatetimeIndex)
+                    else train_start_idx
                 )
                 train_end_iso = (
                     train_data.index[-1].isoformat()
@@ -1090,11 +1090,9 @@ class EnhancedTradingStrategy:
                     and isinstance(
                         train_data.index, pd.DatetimeIndex
                     )  # Check if train_features_raw exists (ML path)
-                    else (
-                        full_data.index[train_end_idx - 1].isoformat()
-                        if isinstance(full_data.index, pd.DatetimeIndex)
-                        else train_end_idx - 1
-                    )
+                    else full_data.index[train_end_idx - 1].isoformat()
+                    if isinstance(full_data.index, pd.DatetimeIndex)
+                    else train_end_idx - 1
                 )
                 step_results["train_start"] = train_start_iso
                 step_results["train_end"] = train_end_iso
@@ -1606,9 +1604,9 @@ class EnhancedTradingStrategy:
             )
 
             return {
-                "status": (
-                    "completed" if backtest_results else "error"
-                ),  # Set status based on backtest success
+                "status": "completed"
+                if backtest_results
+                else "error",  # Set status based on backtest success
                 "backtest_summary": backtest_results,
                 "model_path": model_path,
                 "detected_regime": (

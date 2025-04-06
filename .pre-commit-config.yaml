@@ -25,3 +25,15 @@ repos:
       - id: ruff
         types_or: [ python, pyi, jupyter ]
         args: [--fix] # Attempt to automatically fix lint issues
+
+  # Pytest for running unit tests
+  - repo: local
+    hooks:
+      - id: pytest
+        name: pytest
+        entry: python -m pytest
+        language: python
+        types: [python]
+        pass_filenames: false
+        stages: [pre-commit]
+        additional_dependencies: [pytest, numpy, pandas, scikit-learn, PyYAML, matplotlib, pytest-mock, seaborn]
