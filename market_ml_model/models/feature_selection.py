@@ -6,6 +6,7 @@ import logging
 from typing import Dict, List, Optional, Tuple
 
 import pandas as pd
+import numpy as np  # Import numpy
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -21,6 +22,7 @@ try:
         mutual_info_classif,
     )
     from sklearn.linear_model import LogisticRegression
+    from sklearn.preprocessing import StandardScaler  # Needed for PCA
 
     SKLEARN_AVAILABLE = True
 except ImportError:
@@ -72,146 +74,217 @@ def select_features(
         return X, list(X.columns)
 
     params = params or {}
+    original_columns = list(X.columns)  # Keep original columns for return if needed
 
-    if method == "importance":
-        # Use Random Forest feature importance
-        n_features = params.get("n_features", min(30, X.shape[1]))
-        threshold = params.get("threshold", 0.01)
-
-        clf = RandomForestClassifier(
-            n_estimators=100, max_depth=10, random_state=42, n_jobs=-1
+    # --- Select only numeric columns for methods that require it ---
+    numeric_cols = X.select_dtypes(include=np.number).columns.tolist()
+    if not numeric_cols:
+        logger.error(
+            "No numeric columns found for feature selection method '{method}'. Returning original features."
         )
+        return X, original_columns
+    X_numeric = X[numeric_cols]
+    logger.info(
+        f"Using numeric columns for selection method '{method}': {numeric_cols}"
+    )
 
-        try:
-            clf.fit(X, y)
-            importances = pd.Series(clf.feature_importances_, index=X.columns)
+    # --- Handle NaNs before fitting selectors that require finite values ---
+    # Create cleaned versions by dropping rows with any NaNs in numeric columns
+    X_numeric_clean = X_numeric.dropna()
+    y_clean = y.loc[X_numeric_clean.index]
+
+    if X_numeric_clean.empty:
+        logger.warning(
+            f"No non-NaN data available for feature selection method '{method}'. Returning original features."
+        )
+        return X, original_columns
+
+    try:
+        if method == "importance":
+            # Use Random Forest feature importance on numeric data only
+            n_features = params.get("n_features", min(30, X_numeric.shape[1]))
+            threshold = params.get("threshold")  # Allow threshold=None
+
+            clf = RandomForestClassifier(
+                n_estimators=100, max_depth=10, random_state=42, n_jobs=-1
+            )
+            # Fit on cleaned data
+            clf.fit(X_numeric_clean, y_clean)
+            importances = pd.Series(
+                clf.feature_importances_, index=X_numeric_clean.columns
+            )  # Use clean columns index
             importances = importances.sort_values(ascending=False)
 
+            # Determine selected features based on importance from cleaned data
             if n_features:
                 selected_features = importances.head(n_features).index.tolist()
-            else:
+            elif threshold is not None:
                 selected_features = importances[importances >= threshold].index.tolist()
+            else:  # Default if neither n_features nor threshold provided
+                selected_features = importances.head(
+                    min(30, X_numeric_clean.shape[1])
+                ).index.tolist()  # Use clean shape
 
+            if not selected_features:
+                logger.warning(
+                    "No features selected by importance method. Returning original features."
+                )
+                return X, original_columns
+
+            # Return original DataFrame filtered by selected numeric feature names
             return X[selected_features], selected_features
 
-        except Exception as e:
-            logger.error(f"Error during feature importance selection: {e}")
-            return X, list(X.columns)
+        elif method == "mutual_info":
+            # Use mutual information on numeric data only
+            n_features = params.get("n_features", min(30, X_numeric.shape[1]))
+            # Ensure k is not greater than the number of features
+            # Ensure k is not greater than the number of features in cleaned data
+            k = min(n_features, X_numeric_clean.shape[1])
+            if k <= 0:
+                logger.warning(
+                    f"Invalid number of features requested ({n_features}). Returning original features."
+                )
+                return X, original_columns
 
-    elif method == "mutual_info":
-        # Use mutual information for feature selection
-        n_features = params.get("n_features", min(30, X.shape[1]))
+            selector = SelectKBest(score_func=mutual_info_classif, k=k)
+            # Fit on cleaned data
+            selector.fit(X_numeric_clean, y_clean)
+            selected_features = X_numeric_clean.columns[
+                selector.get_support()
+            ].tolist()  # Get names from clean columns
 
-        try:
-            selector = SelectKBest(score_func=mutual_info_classif, k=n_features)
-            selector.fit(X, y)
+            if not selected_features:
+                logger.warning(
+                    "No features selected by mutual_info method. Returning original features."
+                )
+                return X, original_columns
 
-            # Get selected feature indices
-            selected_indices = selector.get_support(indices=True)
-            selected_features = [X.columns[i] for i in selected_indices]
-
+            # Return original DataFrame filtered by selected numeric feature names
             return X[selected_features], selected_features
 
-        except Exception as e:
-            logger.error(f"Error during mutual information selection: {e}")
-            return X, list(X.columns)
+        elif method == "rfe":
+            # Use Recursive Feature Elimination on numeric data only
+            n_features = params.get("n_features", min(30, X_numeric.shape[1]))
+            step = params.get("step", 1)
+            # Ensure n_features_to_select is valid
+            # Ensure n_features_to_select is valid based on cleaned data
+            n_features_to_select = min(n_features, X_numeric_clean.shape[1])
+            if n_features_to_select <= 0:
+                logger.warning(
+                    f"Invalid n_features_to_select ({n_features_to_select}). Returning original features."
+                )
+                return X, original_columns
 
-    elif method == "rfe":
-        # Use Recursive Feature Elimination
-        n_features = params.get("n_features", min(30, X.shape[1]))
-        step = params.get("step", 1)
-
-        # Use LogisticRegression as the base estimator (faster than RF)
-        estimator = LogisticRegression(max_iter=1000, random_state=42)
-
-        try:
+            estimator = LogisticRegression(max_iter=1000, random_state=42)
             selector = RFE(
-                estimator=estimator, n_features_to_select=n_features, step=step
+                estimator=estimator,
+                n_features_to_select=n_features_to_select,
+                step=step,
             )
-            selector.fit(X, y)
+            # Fit on cleaned data
+            selector.fit(X_numeric_clean, y_clean)
+            selected_features = X_numeric_clean.columns[
+                selector.support_
+            ].tolist()  # Get names from clean columns
 
-            # Get selected feature indices
-            selected_features = X.columns[selector.support_].tolist()
+            if not selected_features:
+                logger.warning(
+                    "No features selected by RFE method. Returning original features."
+                )
+                return X, original_columns
 
+            # Return original DataFrame filtered by selected numeric feature names
             return X[selected_features], selected_features
 
-        except Exception as e:
-            logger.error(f"Error during RFE selection: {e}")
-            return X, list(X.columns)
-
-    elif method == "pca":
-        # Use PCA for dimensionality reduction
-        n_components = params.get("n_components", min(X.shape[1], X.shape[0], 30))
-
-        try:
-            # Standardize data for PCA
-            from sklearn.preprocessing import StandardScaler
+        elif method == "pca":
+            # Use PCA on numeric data only
+            # Determine n_components based on cleaned data shape
+            n_components = params.get(
+                "n_components",
+                min(X_numeric_clean.shape[1], X_numeric_clean.shape[0], 30),
+            )
+            if n_components <= 0:
+                logger.warning(
+                    f"Invalid n_components ({n_components}) for PCA. Returning original features."
+                )
+                return X, original_columns
 
             scaler = StandardScaler()
-            X_scaled = scaler.fit_transform(X)
-
-            # Apply PCA
+            # Scale cleaned data
+            X_scaled = scaler.fit_transform(X_numeric_clean)
             pca = PCA(n_components=n_components)
+            # Fit PCA on scaled cleaned data
             X_pca = pca.fit_transform(X_scaled)
-
-            # Create new feature names
             selected_features = [f"PC{i + 1}" for i in range(n_components)]
-
-            # Convert back to DataFrame
-            X_pca_df = pd.DataFrame(X_pca, index=X.index, columns=selected_features)
-
+            # Create PCA DataFrame using the index from the cleaned data
+            X_pca_df = pd.DataFrame(
+                X_pca, index=X_numeric_clean.index, columns=selected_features
+            )
+            # PCA returns a transformed DataFrame, not a subset of original columns
             return X_pca_df, selected_features
 
-        except Exception as e:
-            logger.error(f"Error during PCA selection: {e}")
-            return X, list(X.columns)
+        elif method == "model":
+            # Use model-based selection on numeric data only
+            model_type = params.get("model_type", "lightgbm")
+            n_features = params.get(
+                "n_features", min(30, X_numeric_clean.shape[1])
+            )  # Use clean shape
+            threshold = params.get("threshold")  # Allow None
 
-    elif method == "model":
-        # Use model-specific feature selection
-        model_type = params.get("model_type", "lightgbm")
-        n_features = params.get("n_features", min(30, X.shape[1]))
-        threshold = params.get("threshold", 0.01)
-
-        if model_type == "lightgbm" and LIGHTGBM_AVAILABLE:
-            try:
-                lgb_model = lgb.LGBMClassifier(n_estimators=100, random_state=42)
-                selector = SelectFromModel(
-                    lgb_model,
-                    threshold="median" if threshold is None else threshold,
-                    max_features=n_features,
+            model_instance = None
+            if model_type == "lightgbm" and LIGHTGBM_AVAILABLE:
+                model_instance = lgb.LGBMClassifier(n_estimators=100, random_state=42)
+            elif model_type == "xgboost" and XGBOOST_AVAILABLE:
+                model_instance = xgb.XGBClassifier(n_estimators=100, random_state=42)
+            else:
+                logger.warning(
+                    f"Unsupported or unavailable model type for feature selection: {model_type}. Using RandomForest."
                 )
-                selector.fit(X, y)
-
-                selected_features = X.columns[selector.get_support()].tolist()
-                return X[selected_features], selected_features
-
-            except Exception as e:
-                logger.error(f"Error during LightGBM model selection: {e}")
-                return X, list(X.columns)
-
-        elif model_type == "xgboost" and XGBOOST_AVAILABLE:
-            try:
-                xgb_model = xgb.XGBClassifier(n_estimators=100, random_state=42)
-                selector = SelectFromModel(
-                    xgb_model,
-                    threshold="median" if threshold is None else threshold,
-                    max_features=n_features,
+                model_instance = RandomForestClassifier(
+                    n_estimators=100, random_state=42
                 )
-                selector.fit(X, y)
 
-                selected_features = X.columns[selector.get_support()].tolist()
-                return X[selected_features], selected_features
+            # Use threshold="median" if threshold param is None, otherwise use the value
+            threshold_param = "median" if threshold is None else threshold
+            # Ensure max_features is valid
+            # Ensure max_features is valid based on cleaned data
+            max_features_param = (
+                min(n_features, X_numeric_clean.shape[1]) if n_features else None
+            )
+            if max_features_param is not None and max_features_param <= 0:
+                logger.warning(
+                    f"Invalid max_features ({max_features_param}). Using threshold only."
+                )
+                max_features_param = None  # Disable max_features if invalid
 
-            except Exception as e:
-                logger.error(f"Error during XGBoost model selection: {e}")
-                return X, list(X.columns)
+            selector = SelectFromModel(
+                model_instance,
+                threshold=threshold_param,
+                max_features=max_features_param,
+            )
+            # Fit on cleaned data
+            selector.fit(X_numeric_clean, y_clean)
+            selected_features = X_numeric_clean.columns[
+                selector.get_support()
+            ].tolist()  # Get names from clean columns
+
+            if not selected_features:
+                logger.warning(
+                    f"No features selected by model ({model_type}) method. Returning original features."
+                )
+                return X, original_columns
+
+            # Return original DataFrame filtered by selected numeric feature names
+            return X[selected_features], selected_features
 
         else:
             logger.warning(
-                f"Unsupported model type for feature selection: {model_type}"
+                f"Unsupported feature selection method: {method}. Returning original features."
             )
-            return X, list(X.columns)
+            return X, original_columns
 
-    else:
-        logger.warning(f"Unsupported feature selection method: {method}")
-        return X, list(X.columns)
+    except Exception as e:
+        logger.error(
+            f"Error during feature selection method '{method}': {e}", exc_info=True
+        )
+        return X, original_columns

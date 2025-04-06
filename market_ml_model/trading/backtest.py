@@ -9,7 +9,7 @@ from typing import Any, Dict, Optional
 import pandas as pd
 
 # Import trade management
-from .simulation import TradeManager
+from .manager import TradeManager
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -78,9 +78,8 @@ def backtest_strategy(
     required_cols = ["high", "low", "close", "prediction"]
 
     # Add ATR column to required if dynamic stops are used
-    if use_dynamic_stops and (
-        atr_multiplier_sl is not None or atr_multiplier_tp is not None
-    ):
+    # Add ATR column to required only if dynamic stops are explicitly enabled
+    if use_dynamic_stops:
         required_cols.append(atr_col)
 
     missing = [c for c in required_cols if c not in data_with_predictions.columns]
@@ -144,10 +143,13 @@ def backtest_strategy(
     for i in range(1, len(df)):
         current_idx = df.index[i]
 
-        # Current market data
-        current_close = df.iloc[i]["close"]
-        # current_high = df.iloc[i]["high"] # Removed unused variable
-        # current_low = df.iloc[i]["low"] # Removed unused variable
+        # Current market data (at the start of the bar)
+        current_open = df.iloc[i]["open"]
+        current_close = df.iloc[i][
+            "close"
+        ]  # Still needed for updates and volatility calc? Check usage.
+        # current_high = df.iloc[i]["high"] # Potentially needed for updates if intra-bar logic added
+        # current_low = df.iloc[i]["low"] # Potentially needed for updates if intra-bar logic added
 
         # Previous data for decisions
         prev_signal = df.iloc[i - 1]["prediction"]
@@ -164,48 +166,54 @@ def backtest_strategy(
         # Process signal for new trades
         # Process signal from PREVIOUS bar to decide action for CURRENT bar
         if prev_signal != 0:  # Non-zero signal from previous bar
-            # Calculate stop loss and take profit prices based on CURRENT close
+            # Calculate stop loss and take profit prices based on CURRENT open
             if use_dynamic_stops and atr_col in df.columns:
-                # Use ATR from the PREVIOUS bar to set stops for entry at CURRENT bar
-                atr_value = df.iloc[i - 1][atr_col]
+                # Use ATR from the PREVIOUS bar to set stops for entry at CURRENT bar's open
+                atr_value = df.iloc[i - 1][
+                    atr_col
+                ]  # Correct: Use info available before bar i
 
                 if prev_signal == 1:  # Long signal
                     stop_loss = (
-                        current_close
-                        - (atr_multiplier_sl * atr_value)  # Based on current_close
+                        current_open  # Use open price as reference
+                        - (atr_multiplier_sl * atr_value)
                         if atr_multiplier_sl is not None
                         else None
                     )
                     take_profit = (
-                        current_close
-                        + (atr_multiplier_tp * atr_value)  # Based on current_close
+                        current_open  # Use open price as reference
+                        + (atr_multiplier_tp * atr_value)
                         if atr_multiplier_tp is not None
                         else None
                     )
                 else:  # Short signal
                     stop_loss = (
-                        current_close
-                        + (atr_multiplier_sl * atr_value)  # Based on current_close
+                        current_open  # Use open price as reference
+                        + (atr_multiplier_sl * atr_value)
                         if atr_multiplier_sl is not None
                         else None
                     )
                     take_profit = (
-                        current_close
-                        - (atr_multiplier_tp * atr_value)  # Based on current_close
+                        current_open  # Use open price as reference
+                        - (atr_multiplier_tp * atr_value)
                         if atr_multiplier_tp is not None
                         else None
                     )
             else:
-                # Default fixed percentage stops based on CURRENT close
+                # Default fixed percentage stops based on CURRENT open
                 if prev_signal == 1:  # Long signal
-                    stop_loss = current_close * (1 - 0.01)
-                    take_profit = current_close * (1 + 0.02)
+                    stop_loss = current_open * (1 - 0.01)  # Use open price as reference
+                    take_profit = current_open * (
+                        1 + 0.02
+                    )  # Use open price as reference
                 else:  # Short signal
-                    stop_loss = current_close * (1 + 0.01)
-                    take_profit = current_close * (1 - 0.02)
+                    stop_loss = current_open * (1 + 0.01)  # Use open price as reference
+                    take_profit = current_open * (
+                        1 - 0.02
+                    )  # Use open price as reference
 
-            # Calculate entry price based on CURRENT close with slippage
-            entry_price = current_close * (1 + slippage_pct_per_trade * prev_signal)
+            # Calculate entry price based on CURRENT open with slippage
+            entry_price = current_open * (1 + slippage_pct_per_trade * prev_signal)
 
             # Convert signal to signal strength (simplistic approach)
             signal_strength = max(0.5, min(1.0, abs(prev_signal) * signal_threshold))

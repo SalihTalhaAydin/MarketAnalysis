@@ -12,13 +12,21 @@ market\_ml\_model.trading.backtest module
    :show-inheritance:
    :undoc-members:
 
-market\_ml\_model.trading.simulation module
--------------------------------------------
+market\_ml\_model.trading.trade module
+--------------------------------------
 
-.. automodule:: market_ml_model.trading.simulation
+.. automodule:: market_ml_model.trading.trade
    :members:
-   :show-inheritance:
    :undoc-members:
+   :show-inheritance:
+
+market\_ml\_model.trading.manager module
+----------------------------------------
+
+.. automodule:: market_ml_model.trading.manager
+   :members:
+   :undoc-members:
+   :show-inheritance:
 
 Module contents
 ---------------

@@ -8,7 +8,7 @@ import pytest
 from market_ml_model.trading.backtest import backtest_strategy
 
 # Import dependencies for mocking specs
-from market_ml_model.trading.simulation import TradeManager
+from market_ml_model.trading.manager import TradeManager
 
 # Define path for patching
 BACKTEST_PATH = "market_ml_model.trading.backtest"
@@ -61,6 +61,8 @@ def mock_trade_manager(mocker):
     mock_instance.active_trades = {}  # Start with no active trades
     mock_instance.positions = {}  # Add the missing positions attribute
     mock_instance.capital = 10000.0  # Initial capital
+    # Add the missing attribute that backtest_strategy tries to access
+    mock_instance.risk_per_trade = 0.02  # Default value
 
     # Patch the class within the backtest module
     mocker.patch(  # Removed unused variable mock_class
@@ -113,19 +115,29 @@ def test_backtest_strategy_entry_logic(sample_backtest_data, mock_trade_manager)
     # Check the first entry call (signal=1 at index 1, entry based on index 0 data)
     first_entry_call = mock_trade_manager.enter_position.call_args_list[0]
     call_kwargs = first_entry_call.kwargs
-    # Entry is based on signal at index 1, using data from index 1 (i=2 loop -> i-1=1)
-    prev_close = sample_backtest_data["close"].iloc[1]
-    prev_atr = sample_backtest_data["ATRr_10"].iloc[1]  # Use ATR from index 1
-    expected_sl = prev_close - 1.5 * prev_atr
-    expected_tp = prev_close + 3.0 * prev_atr
-    # expected_entry = prev_close * (1 + 0.001 * 1)  # Removed unused variable
+    # Entry is based on signal at index 1 (i-1=1), entry happens at index i=2
+    # Decisions use data available *before* bar i starts.
+    # Stops/TP are calculated using ATR from bar i-1 and Open from bar i.
+    # Entry price uses Open from bar i.
+    entry_bar_index = 2
+    signal_bar_index = 1
+    current_open = sample_backtest_data["open"].iloc[entry_bar_index]
+    prev_atr = sample_backtest_data["ATRr_10"].iloc[
+        signal_bar_index
+    ]  # ATR from signal bar
+    slippage = 0.001
+    signal = 1  # Long signal
+
+    expected_sl = current_open - 1.5 * prev_atr
+    expected_tp = current_open + 3.0 * prev_atr
+    expected_entry = current_open * (1 + slippage * signal)
 
     assert (
-        call_kwargs["timestamp"] == sample_backtest_data.index[1]
-    )  # Entry is based on signal at index 1, timestamp is index 1
-    assert call_kwargs["direction"] == 1
-    # Entry price calculation uses prev_close (from index 1)
-    assert call_kwargs["entry_price"] == pytest.approx(prev_close * (1 + 0.001 * 1))
+        call_kwargs["timestamp"] == sample_backtest_data.index[entry_bar_index]
+    )  # Entry timestamp is the current bar's index (i=2)
+    assert call_kwargs["direction"] == signal
+    # Entry price calculation uses current_open (from index 2)
+    assert call_kwargs["entry_price"] == pytest.approx(expected_entry)
     assert call_kwargs["stop_loss"] == pytest.approx(expected_sl)
     assert call_kwargs["take_profit"] == pytest.approx(expected_tp)
     assert call_kwargs["signal_strength"] >= 0.5  # Default threshold logic
@@ -145,11 +157,15 @@ def test_backtest_strategy_no_dynamic_stops(sample_backtest_data, mock_trade_man
     # Check the first entry call
     first_entry_call = mock_trade_manager.enter_position.call_args_list[0]
     call_kwargs = first_entry_call.kwargs
-    # Entry is based on signal at index 1, using data from index 1
-    prev_close = sample_backtest_data["close"].iloc[1]
-    # Default fixed stops are 1% SL, 2% TP
-    expected_sl = prev_close * (1 - 0.01)
-    expected_tp = prev_close * (1 + 0.02)
+    # Entry is based on signal at index 1 (i-1=1), entry happens at index i=2
+    # Fixed stops use the open price of the entry bar (i=2)
+    entry_bar_index = 2
+    current_open = sample_backtest_data["open"].iloc[entry_bar_index]
+    # signal = 1  # Long signal # Removed unused variable
+
+    # Default fixed stops are 1% SL, 2% TP based on entry bar's open
+    expected_sl = current_open * (1 - 0.01)
+    expected_tp = current_open * (1 + 0.02)
 
     # Check that the calculated fixed percentage stop loss was passed
     # Check that the calculated fixed percentage stop loss was passed

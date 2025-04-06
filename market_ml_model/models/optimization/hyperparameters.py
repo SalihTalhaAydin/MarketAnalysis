@@ -18,7 +18,6 @@ try:
     from sklearn.model_selection import (
         GridSearchCV,
         RandomizedSearchCV,
-        TimeSeriesSplit,
     )
 
     SKLEARN_AVAILABLE = True
@@ -124,14 +123,12 @@ def optimize_hyperparameters_grid(
         return None, {}
 
     # Create cross-validation object
-    if isinstance(X_train.index, pd.DatetimeIndex):
-        # Use TimeSeriesSplit for time series data
-        cv_obj = TimeSeriesSplit(n_splits=cv)
-    else:
-        # Use regular KFold for non-time series data
-        from sklearn.model_selection import KFold
+    # Default to standard KFold as input might be NumPy array without index
+    from sklearn.model_selection import KFold
 
-        cv_obj = KFold(n_splits=cv, shuffle=True, random_state=42)
+    cv_obj = KFold(n_splits=cv, shuffle=True, random_state=42)
+    # Note: If time series nature is critical for optimization,
+    # the CV strategy should be determined and passed in earlier.
 
     # Create grid search
     grid_search = GridSearchCV(
@@ -215,14 +212,12 @@ def optimize_hyperparameters_random(
         return None, {}
 
     # Create cross-validation object
-    if isinstance(X_train.index, pd.DatetimeIndex):
-        # Use TimeSeriesSplit for time series data
-        cv_obj = TimeSeriesSplit(n_splits=cv)
-    else:
-        # Use regular KFold for non-time series data
-        from sklearn.model_selection import KFold
+    # Default to standard KFold as input might be NumPy array without index
+    from sklearn.model_selection import KFold
 
-        cv_obj = KFold(n_splits=cv, shuffle=True, random_state=42)
+    cv_obj = KFold(n_splits=cv, shuffle=True, random_state=42)
+    # Note: If time series nature is critical for optimization,
+    # the CV strategy should be determined and passed in earlier.
 
     # Remove n_iter from distributions if it exists, as it's a direct arg for RandomizedSearchCV
     search_distributions = param_distributions.copy()
@@ -354,14 +349,12 @@ def optimize_hyperparameters_bayesian(
 
         try:
             # Create cross-validation object
-            if isinstance(X_train.index, pd.DatetimeIndex):
-                # Use TimeSeriesSplit for time series data
-                cv_obj = TimeSeriesSplit(n_splits=cv)
-            else:
-                # Use regular KFold for non-time series data
-                from sklearn.model_selection import KFold
+            # Default to standard KFold as input might be NumPy array without index
+            from sklearn.model_selection import KFold
 
-                cv_obj = KFold(n_splits=cv, shuffle=True, random_state=42)
+            cv_obj = KFold(n_splits=cv, shuffle=True, random_state=42)
+            # Note: If time series nature is critical for optimization,
+            # the CV strategy should be determined and passed in earlier.
 
             # Perform cross-validation
             from sklearn.model_selection import cross_val_score

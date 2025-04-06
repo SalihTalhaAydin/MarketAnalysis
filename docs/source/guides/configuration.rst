@@ -71,7 +71,8 @@ Configures optional feature selection methods to reduce dimensionality.
 
 *   ``feature_selection``: (Object) Contains feature selection settings.
     *   ``enabled``: (Boolean) Set to ``true`` to perform feature selection.
-    *   ``method``: (String) The selection algorithm to use. Options
+    *   ``method``: (String) The selection algorithm to use. Options:
+
         *   ``'importance'``: Use RandomForest feature importance.
         *   ``'mutual_info'``: Use mutual information (SelectKBest).
         *   ``'rfe'``: Use Recursive Feature Elimination (with Logistic Regression).
@@ -148,7 +149,8 @@ Configures the backtesting engine and trading logic. Corresponds to the ``Tradin
 Position Sizing
 ~~~~~~~~~~~~~~~
 *   ``position_sizing``: (Object) Defines how trade sizes are determined.
-    *   ``method``: (String) Sizing strategy. Options
+    *   ``method``: (String) Sizing strategy. Options:
+
         *   ``'fixed_fractional'``: Risk a fixed fraction of current equity.
         *   ``'fixed_amount'``: Allocate a fixed monetary amount per trade.
         *   *Other custom methods...*
@@ -160,7 +162,8 @@ Position Sizing
 Stop Loss
 ~~~~~~~~~
 *   ``stop_loss``: (Object) Defines how stop-loss levels are set.
-    *   ``method``: (String or null) Stop-loss calculation method. Options
+    *   ``method``: (String or null) Stop-loss calculation method. Options:
+
         *   ``'atr'``: Based on a multiple of the Average True Range (ATR).
         *   ``'fixed_percentage'``: Fixed percentage below entry price.
         *   ``null``: No explicit stop-loss logic (relies on model signals or other exit conditions).
@@ -172,7 +175,8 @@ Stop Loss
 Take Profit
 ~~~~~~~~~~~
 *   ``take_profit``: (Object) Defines how take-profit levels are set.
-    *   ``method``: (String or null) Take-profit calculation method. Options similar to ``stop_loss`` ('atr', 'fixed_percentage', null)
+    *   ``method``: (String or null) Take-profit calculation method. Options similar to ``stop_loss`` ('atr', 'fixed_percentage', null):
+
     *   ``params``: (Object) Parameters for the chosen ``method``.
         *   ``multiplier``: (Float) ATR multiplier for 'atr'.
         *   ``percentage``: (Float) Percentage for 'fixed_percentage'.

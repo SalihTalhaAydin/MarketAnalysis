@@ -54,11 +54,8 @@ def calculate_technical_indicators(
     Args:
         df: DataFrame with OHLCV data. Must contain 'open', 'high', 'low', 'close', 'volume'.
         indicator_configs: A list of dictionaries, where each dictionary defines
-                           an indicator and its parameters.
-                           Example: [{'indicator': 'sma', 'length': 50},
-                                     {'indicator': 'rsi', 'length': 14},
-                                     {'indicator': 'bollinger_bands', 'length': 20, 'std': 2},
-                                     {'indicator': 'atr', 'length': 10}]
+                           an indicator and its parameters. Example:
+                           ``[{'indicator': 'sma', 'length': 50}, {'indicator': 'rsi', 'length': 14}]``
 
     Returns:
         DataFrame with added technical indicator columns.

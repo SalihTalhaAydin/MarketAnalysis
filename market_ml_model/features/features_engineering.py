@@ -31,18 +31,16 @@ def engineer_features(df: pd.DataFrame, feature_config: Dict[str, Any]) -> pd.Da
         df: DataFrame with OHLCV data (must include 'open', 'high', 'low', 'close', 'volume').
             Index must be DatetimeIndex.
         feature_config: Dictionary defining features and target to generate.
-            Expected keys:
-                - 'technical_indicators': List of dictionaries, each specifying an indicator and its parameters
-                                          (e.g., [{'indicator': 'sma', 'length': 50}, {'indicator': 'rsi'}]).
-
-                - 'target_config': Dict defining the target variable.
-
-                - 'type': 'triple_barrier' or 'directional'.
-                - 'atr_multiplier_tp': (for triple_barrier) TP multiplier.
-                - 'atr_multiplier_sl': (for triple_barrier) SL multiplier.
-                - 'max_holding_period': Max bars for target calculation.
-                - 'min_return_threshold': (optional, for triple_barrier) Min return threshold.
-                - 'threshold': (for directional) Significance threshold.
+            Keys include:
+            * ``technical_indicators`` (list): Configurations for technical indicators.
+              Example: ``[{'indicator': 'sma', 'length': 50}, ...]``
+            * ``target_config`` (dict): Configuration for the target variable, containing:
+                * ``type`` (str): 'triple_barrier' or 'directional'.
+                * ``atr_multiplier_tp`` (float): For triple_barrier.
+                * ``atr_multiplier_sl`` (float): For triple_barrier.
+                * ``max_holding_period`` (int): Max bars for target calculation.
+                * ``min_return_threshold`` (float, optional): For triple_barrier.
+                * ``threshold`` (float): For directional.
 
     Returns:
         DataFrame with added features and target labels, ready for model input.
@@ -220,24 +218,24 @@ def engineer_features(df: pd.DataFrame, feature_config: Dict[str, Any]) -> pd.Da
             logger.warning(
                 "Differencing enabled but no features specified in 'differencing.features'."
             )
-    # --- Improved NaN Handling (Before Target Calculation) ---
-    # Apply after all feature calculations but before target definition
-    # This ensures features used for target calculation (like ATR) are handled
+    # --- NaN Handling for Features (Before Target Calculation) ---
+    # Apply after all feature calculations but before target definition.
+    # This handles NaNs in generated features but allows specific handling for target inputs.
     logger.info(
-        f"Applying forward fill and zero fill for NaNs before target calculation. Shape: {processed_df.shape}"
+        f"Applying forward fill and zero fill for NaNs in FEATURES before target calculation. Shape: {processed_df.shape}"
     )
-    initial_nan_count = processed_df.isna().sum().sum()
-    if initial_nan_count > 0:
+    initial_feature_nan_count = processed_df.isna().sum().sum()
+    if initial_feature_nan_count > 0:
         # Apply forward fill first
         processed_df.fillna(method="ffill", inplace=True)
         # Apply zero fill for any remaining NaNs (usually at the beginning)
         processed_df.fillna(0, inplace=True)
-        final_nan_count = processed_df.isna().sum().sum()
+        final_feature_nan_count = processed_df.isna().sum().sum()
         logger.info(
-            f"NaNs before fill: {initial_nan_count}, NaNs after fill: {final_nan_count}"
+            f"Feature NaNs before fill: {initial_feature_nan_count}, Feature NaNs after fill: {final_feature_nan_count}"
         )
     else:
-        logger.info("No NaNs found before target calculation.")
+        logger.info("No NaNs found in features before target calculation.")
 
     # --- Define Target Variable ---
     # --- Define Target Variable ---
@@ -249,9 +247,23 @@ def engineer_features(df: pd.DataFrame, feature_config: Dict[str, Any]) -> pd.Da
         atr_multiplier_sl = target_config.get("atr_multiplier_sl", 1.0)
         max_holding_period = target_config.get("max_holding_period", 10)
         min_return_threshold = target_config.get("min_return_threshold", 0.001)
-        atr_col_name = target_config.get(
-            "atr_column_name", "ATRr_10"
-        )  # Allow config of ATR column
+        # Dynamically determine ATR column name based on config or default
+        # Check if 'technical_indicators' config specifies an ATR period to use
+        atr_period_from_indicators = None
+        for ind_conf in technical_indicator_configs:
+            if ind_conf.get("indicator", "").lower() == "atr":
+                atr_period_from_indicators = ind_conf.get(
+                    "length", 14
+                )  # Default pandas-ta ATR length is 14
+                break
+        # Prioritize target_config setting, then indicator config, then default 10
+        atr_period = target_config.get(
+            "atr_period",
+            atr_period_from_indicators
+            if atr_period_from_indicators is not None
+            else 10,
+        )
+        atr_col_name = f"ATRr_{atr_period}"  # Construct the column name dynamically
 
         logger.info(
             f"Calculating Triple Barrier Labels (TP: {atr_multiplier_tp}*ATR, "
@@ -266,17 +278,33 @@ def engineer_features(df: pd.DataFrame, feature_config: Dict[str, Any]) -> pd.Da
             )
             # Skip labeling if required columns (likely from pandas-ta) are missing
         else:
-            # Calculate labels
-            processed_df["triple_barrier_label"] = get_triple_barrier_labels(
-                prices=processed_df["close"],
-                highs=processed_df["high"],
-                lows=processed_df["low"],
-                atr=processed_df[atr_col_name],  # Use configured ATR column
-                atr_multiplier_tp=atr_multiplier_tp,
-                atr_multiplier_sl=atr_multiplier_sl,
-                max_holding_period=max_holding_period,
-                min_return_threshold=min_return_threshold,
-            )
+            # --- Handle NaNs in the specific ATR column before labeling ---
+            initial_rows = len(processed_df)
+            processed_df.dropna(subset=[atr_col_name], inplace=True)
+            rows_after_drop = len(processed_df)
+            if initial_rows > rows_after_drop:
+                logger.info(
+                    f"Dropped {initial_rows - rows_after_drop} rows due to NaNs in '{atr_col_name}' before triple barrier calculation."
+                )
+
+            if processed_df.empty:
+                logger.warning(
+                    f"DataFrame is empty after dropping NaNs in '{atr_col_name}'. Skipping Triple Barrier labeling."
+                )
+            else:
+                # Calculate labels using the cleaned data
+                processed_df["triple_barrier_label"] = get_triple_barrier_labels(
+                    prices=processed_df["close"],
+                    highs=processed_df["high"],
+                    lows=processed_df["low"],
+                    atr=processed_df[
+                        atr_col_name
+                    ],  # Use dynamically determined and cleaned ATR column
+                    atr_multiplier_tp=atr_multiplier_tp,
+                    atr_multiplier_sl=atr_multiplier_sl,
+                    max_holding_period=max_holding_period,
+                    min_return_threshold=min_return_threshold,
+                )
 
             # Handle NaNs and convert type (fill with 0 for neutral/undetermined)
             if "triple_barrier_label" in processed_df.columns:

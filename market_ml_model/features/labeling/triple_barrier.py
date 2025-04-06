@@ -26,9 +26,8 @@ def get_triple_barrier_labels(
 
     Labels:
         1: Take Profit hit first
-       -1: Stop Loss hit first
+        -1: Stop Loss hit first
         0: Time barrier hit (neither TP nor SL within max_holding_period)
-
 
     Args:
         prices: Series of closing prices (used for entry reference)

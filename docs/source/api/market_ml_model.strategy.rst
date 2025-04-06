@@ -13,7 +13,22 @@ Submodules
    :maxdepth: 4
 
 
-.. automodule:: market_ml_model.strategy.main
+.. automodule:: market_ml_model.strategy.config
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. automodule:: market_ml_model.strategy.core
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. automodule:: market_ml_model.strategy.regime
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. automodule:: market_ml_model.strategy.runner
    :members:
    :undoc-members:
    :show-inheritance:
