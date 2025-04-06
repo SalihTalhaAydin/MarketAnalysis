@@ -31,7 +31,10 @@ except ImportError:
 # Assume these modules are available when running as part of the package
 try:
     # Data Loading
-    from ..data.loaders import DataLoader, DataLoaderConfig
+    from ..data.loaders import (
+        DataLoader,
+        DataLoaderConfig,
+    )  # Original import was load_data
 
     # Feature Engineering
     from ..features.features_engineering import engineer_features
@@ -52,16 +55,12 @@ try:
         predict_with_threshold,
     )
     from ..models.signals import SignalGenerator
+    from ..utils.visualization import plot_drawdowns, plot_equity_curve
 
     # Backtesting & Simulation
     from ..trading.backtest import backtest_strategy
 
     # Utils
-    # from ..utils.metrics import calculate_returns_metrics # Removed unused import
-    from ..utils.visualization import (
-        plot_drawdowns,
-        plot_equity_curve,
-    )
 
     # Regime Detection (Import the class from the new location)
     from .regime import (
