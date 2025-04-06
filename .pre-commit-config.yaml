@@ -31,8 +31,9 @@ repos:
     hooks:
       - id: pytest
         name: pytest
-        entry: pytest
-        language: system
+        entry: python -m pytest
+        language: python
         types: [python]
         pass_filenames: false
         stages: [pre-commit]
+        additional_dependencies: [pytest, numpy, pandas, scikit-learn, PyYAML, matplotlib, pytest-mock, seaborn]

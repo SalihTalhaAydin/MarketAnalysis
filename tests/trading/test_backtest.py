@@ -238,3 +238,6 @@ def test_backtest_strategy_empty_data():
         assert results == {}
         # Check that the warning for empty data was logged
         mock_logger.warning.assert_called_once_with("No data provided for backtesting.")
+
+
+# Test comment to trigger pre-commit hooks
