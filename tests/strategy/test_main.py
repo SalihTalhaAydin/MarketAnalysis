@@ -34,7 +34,6 @@ def mock_strategy_dependencies(mocker):
     # Mocks for dependencies used in strategy.core (EnhancedTradingStrategy)
     mocker.patch(f"{CORE_PATH}.DataLoader", MagicMock())
     mocker.patch(f"{CORE_PATH}.DataLoaderConfig", MagicMock())
-    # mocker.patch(f"{CORE_PATH}.load_data", MagicMock()) # Removed patch for unused import
     mocker.patch(f"{CORE_PATH}.engineer_features", MagicMock())
     mocker.patch(f"{CORE_PATH}.train_classification_model", MagicMock())
     # Patch where the object is defined/imported from
@@ -43,15 +42,11 @@ def mock_strategy_dependencies(mocker):
     mocker.patch("market_ml_model.models.signals.SignalGenerator", MagicMock())
     # predict_with_model no longer directly imported in core
     # load_model no longer directly imported in core
-    # mocker.patch(f"{CORE_PATH}.generate_model_report", MagicMock()) # Removed incorrect patch
     mocker.patch(f"{CORE_PATH}.backtest_strategy", MagicMock())
     mocker.patch(
         "market_ml_model.trading.TradeManager", MagicMock()
     )  # Patch where defined/exposed
-    # mocker.patch(f"{CORE_PATH}.calculate_returns_metrics", MagicMock()) # Removed patch for unused import
     mocker.patch(f"{CORE_PATH}.plot_equity_curve", MagicMock())
-    # mocker.patch(f"{CORE_PATH}.plot_monthly_returns", MagicMock()) # Removed patch for unused import
-    # mocker.patch(f"{CORE_PATH}.plot_drawdowns", MagicMock()) # Removed patch for unused import
     mocker.patch(
         f"{CORE_PATH}.MarketRegimeDetector", MagicMock()
     )  # Mock detector used by core

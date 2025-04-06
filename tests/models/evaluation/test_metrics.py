@@ -162,8 +162,7 @@ def mock_plotting(mocker):
     """Mocks plotting libraries."""
     mocker.patch(f"{METRICS_PATH}.VISUALIZATION_AVAILABLE", True)
     mock_plt = mocker.patch(f"{METRICS_PATH}.plt")
-    # mock_sns = mocker.patch(f"{METRICS_PATH}.sns") # Removed patch, rely on installed seaborn
-    return mock_plt  # Return only mock_plt
+    return mock_plt
 
 
 # --- Tests for evaluate_classifier ---
@@ -363,7 +362,6 @@ def test_plot_confusion_matrix(mock_plotting):
     mock_plt = mock_plotting  # Unpack only plt
     cm = np.array([[10, 2], [3, 15]])
     plot_confusion_matrix(cm, class_names=["A", "B"], filename="test_cm.png")
-    # mock_sns.heatmap.assert_called_once() # sns is no longer mocked in the fixture
     mock_plt.savefig.assert_called_once_with(
         "test_cm.png", dpi=300, bbox_inches="tight"
     )
@@ -382,10 +380,6 @@ def test_plot_feature_importance(mock_plotting):
     )
     plot_feature_importance(imp_df, top_n=2, filename="test_fi.png")
     # Check barplot was called
-    # mock_sns.barplot.assert_called_once() # sns is no longer mocked in the fixture
-    # Get the Axes object returned by barplot and check errorbar on it
-    # ax = mock_sns.barplot.return_value # sns is no longer mocked
-    # ax.errorbar.assert_called_once()  # Check errorbar called on the correct Axes
     mock_plt.savefig.assert_called_once_with(
         "test_fi.png", dpi=300, bbox_inches="tight"
     )
@@ -427,7 +421,6 @@ def test_plotting_unavailable(mock_logger, mock_plotting):
     plot_precision_recall_curve([1, 0], [0, 1], 0.5)
     assert mock_logger.error.call_count == 4
     mock_plt.figure.assert_not_called()
-    # mock_sns.heatmap.assert_not_called() # sns is no longer mocked in the fixture
 
 
 # --- Tests for generate_model_report ---
@@ -494,11 +487,7 @@ def test_generate_model_report(
     # Check directory creation
     mock_makedirs.assert_called_once_with(output_dir, exist_ok=True)
 
-    # Check plotting functions were called (Removed - plotting is not done in generate_model_report)
-    # assert mock_plot_cm.call_count == 2
-    # mock_plot_fi.assert_called_once()
-    # mock_plot_roc.assert_called_once()
-    # mock_plot_pr.assert_called_once()
+    # Assertions for plotting functions removed as they are not called here
 
     # Check files were saved (mock_open checks for JSON)
     assert mock_open.call_count >= 1  # JSON report should be saved via mock_open
