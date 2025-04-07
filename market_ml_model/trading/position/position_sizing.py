@@ -52,6 +52,12 @@ def calculate_position_size(
     Returns:
         Position size as a fraction of capital to allocate. Returns 0.0 if inputs are invalid.
     """
+    print(
+        f"DEBUG_SIZING - Inputs: capital={capital}, signal_strength={signal_strength}, "
+        f"volatility={volatility}, current_price={current_price}, "
+        f"max_risk_per_trade={max_risk_per_trade}, max_capital_per_trade={max_capital_per_trade}, "
+        f"entry_price={entry_price}, stop_loss_price={stop_loss_price}"
+    )
     # Validate inputs
     if capital <= 0:
         logger.warning("Capital is zero or negative, cannot size position.")
@@ -78,6 +84,7 @@ def calculate_position_size(
         return 0.0
 
     risk_per_unit = abs(entry_price - stop_loss_price)
+    print(f"DEBUG_SIZING - Calculated risk_per_unit: {risk_per_unit}")
     if risk_per_unit < 1e-9:  # Avoid division by zero if entry == stop
         logger.warning(
             f"Risk per unit is zero (entry={entry_price}, stop={stop_loss_price}). Cannot size position."
@@ -87,9 +94,15 @@ def calculate_position_size(
     # Calculate the ideal fraction of capital to allocate based on risk
     # Formula: Capital Fraction = (max_risk_per_trade * entry_price) / abs(entry_price - stop_loss_price)
     position_size_fraction = (max_risk_per_trade * entry_price) / risk_per_unit
+    print(
+        f"DEBUG_SIZING - Initial position_size_fraction (before cap): {position_size_fraction}"
+    )
 
     # Cap the allocation by max_capital_per_trade
     position_size_fraction = min(position_size_fraction, max_capital_per_trade)
+    print(
+        f"DEBUG_SIZING - position_size_fraction after cap ({max_capital_per_trade}): {position_size_fraction}"
+    )
 
     # Ensure final size is non-negative
     position_size_fraction = max(0, position_size_fraction)
@@ -110,4 +123,7 @@ def calculate_position_size(
     # else:
     #     return position_size_fraction # Return fraction
 
+    print(
+        f"DEBUG_SIZING - Final position_size_fraction returned: {position_size_fraction}"
+    )
     return position_size_fraction  # Return fraction by default

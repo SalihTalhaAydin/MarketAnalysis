@@ -140,6 +140,7 @@ class FeatureConfig:
         # New Transformation Configs
         differencing: Optional[Dict] = None,  # Accept dict from YAML
         scaling: Optional[Dict] = None,  # Accept dict from YAML
+        correlation_filter: Optional[Dict] = None,  # Accept dict from YAML
     ):
         # Store the list of indicator configs, default to empty list if None
         self.technical_indicators = technical_indicators or []
@@ -161,6 +162,9 @@ class FeatureConfig:
         # Instantiate nested config objects from input dicts
         self.differencing = DifferencingConfig.from_dict(differencing or {})
         self.scaling = ScalingConfig.from_dict(scaling or {})
+        self.correlation_filter = (
+            correlation_filter or {}
+        )  # Store the dict, default to empty
 
     def to_dict(self) -> Dict:
         """Convert configuration to dictionary."""
@@ -170,6 +174,10 @@ class FeatureConfig:
             self.differencing.to_dict() if self.differencing else None
         )
         data["scaling"] = self.scaling.to_dict() if self.scaling else None
+        # Serialize correlation_filter if it exists
+        data["correlation_filter"] = (
+            self.correlation_filter if self.correlation_filter else None
+        )
         return data
 
     @classmethod
@@ -178,11 +186,15 @@ class FeatureConfig:
         # Handle nested dicts when creating from dict
         diff_cfg_dict = config_dict.pop("differencing", {})
         scale_cfg_dict = config_dict.pop("scaling", {})
+        corr_filter_dict = config_dict.pop(
+            "correlation_filter", {}
+        )  # Pop the new config
 
-        # Create instance with remaining args
-        instance = cls(**config_dict)
+        # Create instance with remaining args, passing the popped dict
+        instance = cls(correlation_filter=corr_filter_dict, **config_dict)
 
-        # Manually create nested objects (or pass dicts if __init__ handles it)
+        # Manually create other nested objects
+        # Note: correlation_filter is now handled directly in __init__
         instance.differencing = DifferencingConfig.from_dict(diff_cfg_dict)
         instance.scaling = ScalingConfig.from_dict(scale_cfg_dict)
 
@@ -227,6 +239,7 @@ class ModelConfig:
         regime_models: Optional[
             Dict[int, str]
         ] = None,  # Optional: map regime -> model_type
+        params: Optional[Dict] = None,  # Default model parameters
     ):
         self.model_type = model_type
         self.ensemble_models = ensemble_models or []
@@ -249,6 +262,7 @@ class ModelConfig:
         self.max_correlation_exposure = max_correlation_exposure
         self.regime_adaptation_enabled = regime_adaptation_enabled
         self.regime_models = regime_models or {}
+        self.params = params or {}  # Store default model parameters
 
     def to_dict(self) -> Dict:
         """Convert configuration to dictionary."""

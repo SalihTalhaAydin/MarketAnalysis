@@ -10,6 +10,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 import joblib
+import numpy as np  # Added for importance selection
 import pandas as pd
 
 from .evaluation.metrics import compute_feature_importance, evaluate_classifier
@@ -173,11 +174,11 @@ def train_classification_model(
     model_id: Optional[str] = None,
     class_names: Optional[List[str]] = None,
     random_state: int = 42,
-) -> Tuple[Optional[Any], Optional[pd.DataFrame], Optional[Dict]]:
+) -> Tuple[Optional[Any], Optional[ColumnTransformer], Optional[Dict], List[str]]:
     """Trains a classification model with advanced options."""
     if not SKLEARN_AVAILABLE:
         logger.error("scikit-learn is required for model training.")
-        return None, None, None
+        return None, None, None, []
 
     if model_id is None:
         model_id = (
@@ -195,25 +196,27 @@ def train_classification_model(
 
     # --- Config Defaults ---
     model_config = model_config or {}
-    model_type = model_config.get("model_type", "lightgbm")
-    model_params = model_config.get("params", {})
+    model_type = model_config.get("model_type", "lightgbm")  # Use .get() for dict
+    model_params = model_config.get("params", {})  # Use .get() for dict
     # Default feature selection to enabled with mutual_info
     feature_selection_config = feature_selection_config or {"enabled": True}
     perform_feature_selection = feature_selection_config.get(
         "enabled", True
-    )  # Respect config
-    fs_method = feature_selection_config.get("method", "mutual_info")
-    fs_params = feature_selection_config.get(
-        "params", {"n_features": min(50, features.shape[1])}
+    )  # Respect config, use .get() for dict
+    fs_method = getattr(feature_selection_config, "method", "mutual_info")
+    fs_params = getattr(
+        feature_selection_config, "params", {"n_features": min(50, features.shape[1])}
     )
     preprocessing_config = preprocessing_config or {}
-    scaling_method = preprocessing_config.get("scaling_method", "standardscaler")
-    handle_missing = preprocessing_config.get("handle_missing", True)
+    scaling_method = getattr(preprocessing_config, "scaling_method", "standardscaler")
+    handle_missing = getattr(preprocessing_config, "handle_missing", True)
     optimization_config = optimization_config or {}
-    opt_method = optimization_config.get("method", "random")
-    opt_params = optimization_config.get("params", {})
-    opt_cv = optimization_config.get("cv", 5)
-    opt_scoring = optimization_config.get("scoring", "f1_weighted")
+    opt_method = optimization_config.get("method", "random")  # Use .get() for dict
+    opt_params = optimization_config.get("params", {})  # Use .get() for dict
+    opt_cv = optimization_config.get("cv", 5)  # Use .get() for dict
+    opt_scoring = optimization_config.get(
+        "scoring", "f1_weighted"
+    )  # Use .get() for dict
 
     # --- Data Splitting ---
     try:
@@ -237,17 +240,19 @@ def train_classification_model(
         logger.error(f"Error splitting data: {e}")
         logger.error(f"Error splitting data: {e}", exc_info=True)
         # Ensure this returns immediately
-        return None, None, {"error": f"Data splitting failed: {e}"}
+        return None, None, {"error": f"Data splitting failed: {e}"}, []
 
     # --- Feature Selection (On Raw Training Data) ---
     selected_feature_names_raw = list(X_train_raw.columns)
     X_train_selected_raw = X_train_raw
     X_test_selected_raw = X_test_raw
 
-    if perform_feature_selection:
+    if (
+        perform_feature_selection and fs_method != "importance"
+    ):  # Skip initial selection for 'importance'
         try:
             logger.info(
-                f"Performing feature selection using {fs_method} method on raw training data"
+                f"Performing feature selection using {fs_method} method on raw training data (before preprocessing)"
             )
             # Select features based on raw training data
             _, selected_feature_names_raw = select_features(
@@ -256,7 +261,9 @@ def train_classification_model(
             # Apply selection to raw train and test sets
             X_train_selected_raw = X_train_raw[selected_feature_names_raw]
             X_test_selected_raw = X_test_raw[selected_feature_names_raw]
-            logger.info(f"Selected {len(selected_feature_names_raw)} raw features")
+            logger.info(
+                f"Selected {len(selected_feature_names_raw)} raw features (before preprocessing)"
+            )
 
             if model_dir:
                 fs_path = os.path.join(model_dir, "selected_features.json")
@@ -273,8 +280,19 @@ def train_classification_model(
             )
             selected_feature_names_raw = list(X_train_raw.columns)
             X_train_selected_raw, X_test_selected_raw = X_train_raw, X_test_raw
+    elif perform_feature_selection and fs_method == "importance":
+        logger.info(
+            "Skipping initial feature selection step; 'importance' method runs after preprocessing."
+        )
+        # Use all features passed into the function for preprocessing initially
+        selected_feature_names_raw = list(X_train_raw.columns)
+        X_train_selected_raw = X_train_raw
+        X_test_selected_raw = X_test_raw
     else:
-        logger.info("Skipping feature selection.")
+        logger.info("Feature selection disabled.")
+        selected_feature_names_raw = list(X_train_raw.columns)
+        X_train_selected_raw = X_train_raw
+        X_test_selected_raw = X_test_raw
 
     # --- Preprocessing (On Selected Raw Data) ---
     preprocessor = None
@@ -334,7 +352,7 @@ def train_classification_model(
         logger.error(f"Error during preprocessing: {e}", exc_info=True)
         logger.error(f"Error during preprocessing: {e}", exc_info=True)
         # Ensure this returns immediately
-        return None, None, {"error": f"Preprocessing failed: {e}"}
+        return None, None, {"error": f"Preprocessing failed: {e}"}, []
 
     # Final data for training/evaluation (NumPy arrays)
     X_train_final_np = X_train_processed_np
@@ -351,7 +369,106 @@ def train_classification_model(
         X_test_final_np, columns=final_feature_names, index=X_test_raw.index
     )  # Use original index
 
-    # --- Model Training ---
+    # --- Importance-Based Feature Selection (After Preprocessing) ---
+    num_features_before_importance = X_train_final_np.shape[1]
+    if perform_feature_selection and fs_method == "importance":
+        try:
+            n_features_to_select = fs_params.get("n_features", None)
+            if (
+                n_features_to_select is None
+                or not isinstance(n_features_to_select, int)
+                or n_features_to_select <= 0
+            ):
+                logger.warning(
+                    f"Invalid or missing 'n_features' in feature_selection_config.params for 'importance' method. Defaulting to use all {num_features_before_importance} features."
+                )
+                n_features_to_select = num_features_before_importance
+            elif n_features_to_select > num_features_before_importance:
+                logger.warning(
+                    f"'n_features' ({n_features_to_select}) is greater than available features ({num_features_before_importance}). Using all available features."
+                )
+                n_features_to_select = num_features_before_importance
+
+            logger.info(
+                f"Performing importance-based feature selection. Selecting top {n_features_to_select} features."
+            )
+
+            # Train a temporary model (e.g., LightGBM) to get importance scores
+            # Use default params or params from model_config if available, but don't optimize here
+            temp_model_type = model_type  # Assume same type for importance calc
+            temp_model_params = model_params  # Use same base params
+            logger.info(
+                f"Training temporary {temp_model_type} model for feature importance calculation..."
+            )
+            temp_model = create_model(temp_model_type, temp_model_params)
+            if temp_model is None:
+                raise ValueError(
+                    f"Failed to create temporary model {temp_model_type} for importance calculation."
+                )
+
+            # Check if the model has fit method and feature_importances_ attribute
+            if not (
+                hasattr(temp_model, "fit")
+                and hasattr(temp_model, "feature_importances_")
+            ):
+                raise TypeError(
+                    f"Model type {temp_model_type} does not support 'feature_importances_' needed for importance selection."
+                )
+
+            temp_model.fit(X_train_final_np, y_train)  # Fit on processed data
+            importances = temp_model.feature_importances_
+
+            if len(importances) != len(final_feature_names):
+                raise ValueError(
+                    f"Mismatch between number of importances ({len(importances)}) and feature names ({len(final_feature_names)})"
+                )
+
+            # Get indices of top N features
+            indices = np.argsort(importances)[::-1]
+            top_n_indices = indices[:n_features_to_select]
+
+            # Select the corresponding feature names and filter data
+            selected_final_feature_names = [
+                final_feature_names[i] for i in top_n_indices
+            ]
+            X_train_final_np = X_train_final_np[:, top_n_indices]
+            X_test_final_np = X_test_final_np[:, top_n_indices]
+
+            # Update final feature names and DataFrames
+            final_feature_names = selected_final_feature_names
+            X_train_final_df = pd.DataFrame(
+                X_train_final_np, columns=final_feature_names, index=X_train_raw.index
+            )
+            X_test_final_df = pd.DataFrame(
+                X_test_final_np, columns=final_feature_names, index=X_test_raw.index
+            )
+
+            logger.info(
+                f"Selected top {len(final_feature_names)} features based on importance: {final_feature_names[:10]}..."
+            )  # Log first 10
+
+            # Save selected final features if needed
+            if model_dir:
+                fs_final_path = os.path.join(
+                    model_dir, "selected_features_final_importance.json"
+                )
+                try:
+                    with open(fs_final_path, "w") as f:
+                        json.dump(final_feature_names, f, indent=4)
+                except Exception as e:
+                    logger.error(
+                        f"Failed to save final selected features (importance) to {fs_final_path}: {e}"
+                    )
+
+        except Exception as e:
+            logger.error(
+                f"Error during importance-based feature selection: {e}. Proceeding with all {num_features_before_importance} preprocessed features.",
+                exc_info=True,
+            )
+            # Reset to use all features if selection failed
+            # Note: X_train_final_np, X_test_final_np, final_feature_names etc. would still hold the values from *before* this block failed.
+
+    # --- Final Model Training ---
     model = None
     best_params = model_params
     try:
@@ -361,43 +478,121 @@ def train_classification_model(
             logger.info(
                 f"Optimizing hyperparameters for {model_type} using {opt_method} method"
             )
-            # Pass final numpy array to optimization function
-            model, best_params = optimize_hyperparameters(
-                model_type=model_type,
-                X_train=X_train_final_np,
-                y_train=y_train,  # Pass numpy array
-                method=opt_method,
-                params=opt_params,
-                cv=opt_cv,
-                scoring=opt_scoring,
-                verbose=1,
-                # Removed unexpected fit_params argument
+            # --- Add checks before optimization ---
+            logger.debug(
+                f"Data shape going into optimization: X={X_train_final_np.shape}, y={y_train.shape}"
             )
-            logger.info(
-                f"Hyperparameter optimization complete. Best parameters found: {best_params}"
+            if np.isnan(X_train_final_np).any():
+                logger.warning("NaNs detected in X_train_final_np before optimization!")
+            if np.isinf(X_train_final_np).any():
+                logger.warning("Infs detected in X_train_final_np before optimization!")
+            if y_train.isnull().any():
+                logger.warning("NaNs detected in y_train before optimization!")
+            # Check for sufficient class representation
+            unique_classes, counts = np.unique(y_train, return_counts=True)
+            logger.debug(
+                f"Unique y_train values before optimization: {dict(zip(unique_classes, counts))}"
             )
+            # Decide whether to run optimization based on checks
+            run_optimization = True
+            if len(unique_classes) < 2:
+                logger.error(
+                    "Only one class present in y_train before optimization! Skipping hyperparameter optimization."
+                )
+                run_optimization = False
+            elif np.any(
+                counts < opt_cv
+            ):  # Check if any class count is less than CV folds
+                logger.warning(
+                    f"Some classes in y_train have fewer samples ({counts}) than CV folds ({opt_cv}). Skipping hyperparameter optimization due to potential CV errors."
+                )
+                run_optimization = False
+            # --- End checks ---
 
+            if run_optimization:
+                logger.info("Proceeding with hyperparameter optimization...")
+                # Pass final numpy array to optimization function
+                model, best_params = optimize_hyperparameters(
+                    model_type=model_type,
+                    X_train=X_train_final_np,
+                    y_train=y_train,  # Pass numpy array
+                    method=opt_method,
+                    params=opt_params,
+                    cv=opt_cv,
+                    scoring=opt_scoring,
+                    verbose=1,
+                    # Removed unexpected fit_params argument
+                )
+            else:
+                # Optimization skipped due to data checks
+                model = None  # Ensure model is None if optimization is skipped
+                best_params = {}  # Indicate optimization was skipped/failed
+            # Check if optimization actually returned parameters
+            if best_params:
+                logger.info(
+                    f"Hyperparameter optimization complete. Best parameters found: {best_params}"
+                )
+                # Create the final model using the best parameters found
+                logger.info(
+                    f"Creating final {model_type} model with optimized parameters..."
+                )
+                model = create_model(model_type, best_params)
+                if model is None:
+                    raise ValueError(
+                        f"Failed to create optimized model {model_type} with params {best_params}"
+                    )
+                # Fit the final optimized model
+                logger.info(
+                    f"Fitting final optimized model on data with shape: {X_train_final_np.shape}"
+                )
+                model.fit(X_train_final_np, y_train, **fit_params)  # Pass numpy array
+                logger.info("Fitting final optimized model complete.")
+            else:
+                # Optimization was enabled but failed to find parameters (returned empty dict)
+                logger.warning(
+                    "Optimization ran but failed to find best parameters. Falling back to default parameters."
+                )
+                model = create_model(model_type, model_params)  # Use defaults
+                if model is None:
+                    raise ValueError(
+                        f"Failed to create model {model_type} with default parameters after optimization failure."
+                    )
+                logger.info(
+                    f"Fitting model with default parameters on data with shape: {X_train_final_np.shape}"
+                )
+                model.fit(X_train_final_np, y_train, **fit_params)
+                best_params = model_params  # Ensure best_params reflects defaults used
+
+            # Save the parameters that were actually used (either optimized or default)
             if model_dir:
                 params_path = os.path.join(model_dir, "best_params.json")
                 try:
                     with open(params_path, "w") as f:
+                        # Save the potentially updated best_params (could be defaults if opt failed)
                         json.dump(best_params, f, indent=4, default=str)
-                    logger.info(f"Saved best hyperparameters to {params_path}")
+                    logger.info(
+                        f"Saved parameters used for final model to {params_path}"
+                    )
                 except Exception as e:
-                    logger.error(f"Failed to save best parameters: {e}")
+                    logger.error(f"Failed to save final parameters: {e}")
 
-        else:
-            logger.info(f"Training {model_type} with provided/default parameters")
+        else:  # optimize_hyperparams is False
+            logger.info(
+                f"Training {model_type} with provided/default parameters (optimization disabled)"
+            )
             model = create_model(model_type, model_params)
             if model is None:
-                raise ValueError(f"Failed to create model {model_type}")
+                raise ValueError(
+                    f"Failed to create model {model_type} (optimization disabled)"
+                )
             # Fit model on final numpy array
             logger.info(f"Fitting model on data with shape: {X_train_final_np.shape}")
             model.fit(X_train_final_np, y_train, **fit_params)  # Pass numpy array
-            best_params = model_params
+            best_params = model_params  # Ensure best_params reflects defaults used
 
+        # Final check: If after all attempts model is still None, something went wrong.
         if model is None:
-            raise ValueError("Model training failed.")
+            raise ValueError("Model is None after training attempts. Critical failure.")
         logger.info("Model training finished.")
 
         # --- Evaluation ---
@@ -482,8 +677,13 @@ def train_classification_model(
                 "random_state": random_state,
                 "training_timestamp": datetime.now().isoformat(),
                 "num_original_features": features.shape[1],
-                "num_selected_raw_features": len(selected_feature_names_raw),
-                "num_processed_features": len(final_feature_names),
+                "num_selected_raw_features": len(
+                    selected_feature_names_raw
+                ),  # Features selected before preprocessing (if any)
+                "num_features_after_preprocessing": num_features_before_importance,  # Features entering importance selection/final training
+                "num_processed_features_final": len(
+                    final_feature_names
+                ),  # Features used in the final model
                 "num_train_samples": X_train_final_np.shape[0],
                 "num_test_samples": X_test_final_np.shape[0],
                 "target_distribution_train": y_train.value_counts().to_dict(),
@@ -506,9 +706,10 @@ def train_classification_model(
                 except Exception as e:
                     logger.error(f"Failed to save feature importance: {e}")
 
-        return model, importance_df, metrics
+        # Return model, preprocessor, metrics, and the final feature names used by the model
+        return model, preprocessor, metrics, final_feature_names
 
     except Exception as e:
         logger.exception(f"Critical error during model training pipeline: {e}")
         # Ensure this returns immediately
-        return None, None, {"error": f"Training pipeline failed: {e}"}
+        return None, None, {"error": f"Training pipeline failed: {e}"}, []

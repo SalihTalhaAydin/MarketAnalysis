@@ -216,22 +216,24 @@ class SignalGenerator:
         mc = model_config or {}
 
         self.threshold = (
-            threshold if threshold is not None else mc.get("probability_threshold", 0.6)
+            threshold
+            if threshold is not None
+            else getattr(mc, "probability_threshold", 0.6)
         )
         self.neutral_zone = (
             neutral_zone
             if neutral_zone is not None
-            else mc.get("signal_neutral_zone", (0.45, 0.55))
+            else getattr(mc, "signal_neutral_zone", (0.45, 0.55))
         )
         self.trend_filter_ma = (
             trend_filter_ma
             if trend_filter_ma is not None
-            else mc.get("signal_trend_filter_ma")
+            else getattr(mc, "signal_trend_filter_ma", None)
         )
         self.volatility_filter_atr = (
             volatility_filter_atr
             if volatility_filter_atr is not None
-            else mc.get("signal_volatility_filter_atr")
+            else getattr(mc, "signal_volatility_filter_atr", None)
         )
         self.volatility_threshold_q = (
             volatility_threshold_q  # Keep default or allow override? Check config?
@@ -239,31 +241,29 @@ class SignalGenerator:
         self.cooling_period = (
             cooling_period
             if cooling_period is not None
-            else mc.get("signal_cooling_period", 3)
+            else getattr(mc, "signal_cooling_period", 3)
         )
 
-        self.last_signal_time = (
-            {}
-        )  # symbol -> timestamp (This state might be better managed outside)
+        self.last_signal_time = {}  # symbol -> timestamp (This state might be better managed outside)
 
         # --- Class Name to Signal Value Mapping ---
         self.class_names = class_names
         self.signal_map = {}  # Map from class index to signal value (-1, 0, 1)
 
-        if self.class_names:
+        if self.class_names is not None and self.class_names.size > 0:
             # Try to create a mapping based on common conventions
             if set(self.class_names) == {"-1", "1"}:  # Binary -1, 1
                 self.signal_map = {
-                    self.class_names.index("-1"): -1,
-                    self.class_names.index("1"): 1,
+                    list(self.class_names).index("-1"): -1,
+                    list(self.class_names).index("1"): 1,
                 }
             elif set(self.class_names) == {
                 "0",
                 "1",
             }:  # Binary 0, 1 (map 0 -> -1, 1 -> 1)
                 self.signal_map = {
-                    self.class_names.index("0"): -1,
-                    self.class_names.index("1"): 1,
+                    list(self.class_names).index("0"): -1,
+                    list(self.class_names).index("1"): 1,
                 }
                 logger.warning(
                     "Assuming binary classes '0', '1' map to signals -1, 1 respectively."
@@ -331,7 +331,9 @@ class SignalGenerator:
             f"Generating signals from {len(predictions)} predictions using threshold {self.threshold}..."
         )
 
-        if not self.class_names or not self.signal_map:
+        if (
+            self.class_names is None or self.class_names.size == 0
+        ) or not self.signal_map:
             logger.error(
                 "Cannot generate signals: Class names or signal map missing/invalid."
             )
@@ -376,9 +378,40 @@ class SignalGenerator:
             .fillna(0)
             .astype(int)
         )
+        # --- FIX: Force signal if neutral class (1) wins but passes threshold ---
+        neutral_class_index = [k for k, v in self.signal_map.items() if v == 0]
+        if neutral_class_index:  # Check if neutral class exists in map
+            neutral_idx = neutral_class_index[0]
+            force_signal_mask = (winning_class_idx == neutral_idx) & (
+                winning_prob >= self.threshold
+            )
+            signals.loc[force_signal_mask, "raw_signal"] = 1  # Force long signal
+            logger.info(
+                f"DEBUG_SIGNALS - Forced {force_signal_mask.sum()} neutral predictions (index {neutral_idx}) to signal 1 due to passing threshold."
+            )
+        # --- End FIX ---
 
         # Apply threshold: Set signal to neutral (0) if winning probability is below threshold
+        # Log winning probabilities vs threshold
+        if len(winning_prob) > 0:  # Avoid error on empty array
+            logger.info(
+                f"DEBUG_SIGNALS - First 5 Winning Probs: {winning_prob[:5]}, Winning Class Indices: {winning_class_idx[:5]}, Threshold: {self.threshold}"
+            )
+            # --- Add logging before threshold ---
+            logger.info(
+                f"DEBUG_SIGNALS - Signal BEFORE threshold (first 5): {signals['raw_signal'].iloc[:5].tolist()}"
+            )
+            # --- End Add logging ---
+        else:
+            logger.info("DEBUG_SIGNALS - No winning probabilities to log.")
+        # This still applies to originally non-neutral signals (e.g., class 0 or 2) if their prob is too low
         signals.loc[winning_prob < self.threshold, "raw_signal"] = 0
+        # --- Add logging after threshold ---
+        if len(winning_prob) > 0:
+            logger.info(
+                f"DEBUG_SIGNALS - Signal AFTER threshold (first 5): {signals['raw_signal'].iloc[:5].tolist()}"
+            )
+        # --- End Add logging ---
 
         # Calculate confidence as the probability of the winning class
         signals["confidence"] = winning_prob
@@ -399,10 +432,15 @@ class SignalGenerator:
                     signals,
                     data_aligned,  # Pass aligned data
                 )
-        elif self.trend_filter_ma is not None or self.volatility_filter_atr is not None:
-            logger.warning(
-                "OHLC data not provided, cannot apply trend/volatility filters."
-            )
+        else:  # Corresponds to 'if data is not None...'
+            # Only warn if filters were actually enabled but data was missing
+            if (
+                self.trend_filter_ma is not None
+                or self.volatility_filter_atr is not None
+            ):
+                logger.warning(
+                    "OHLC data not provided, cannot apply trend/volatility filters."
+                )
 
         # --- Apply Regime Actions ---
         if current_regime is not None and regime_actions:

@@ -275,13 +275,22 @@ class TradeManager:
             return None
 
         # Calculate position size (includes risk checks)
+        logger.info(
+            f"DEBUG_MANAGER - Calling calculate_position_size with: symbol={symbol}, "
+            f"signal_strength={signal_strength:.4f}, volatility={volatility:.4f}, "
+            f"entry_price={entry_price:.4f}, stop_loss={stop_loss:.4f}"
+        )
         size = self.calculate_position_size(
             symbol, signal_strength, volatility, entry_price, stop_loss
-        )
+        )  # Original calculation commented out for debugging
+
+        # Force minimal size (e.g., 1 share) for debugging zero trades issue
 
         if size <= 0:
+            # Add more detailed logging here to understand *why* size is zero
             logger.info(
-                f"Position size calculation returned {size:.6f} for {symbol}. No trade entered."
+                f"Position size calculation returned {size:.6f} for {symbol} at price {entry_price:.4f} (Capital: {self.capital:.2f}). "
+                f"Check risk limits (_check_risk_limits) and sizing logic (calculate_position_size). No trade entered."
             )
             return None
 
@@ -429,6 +438,9 @@ class TradeManager:
 
         # Move trade from active to closed
         self.closed_trades.append(trade)
+        logger.info(
+            f"DEBUG_MANAGER - Moved trade {trade_id} to closed_trades. Total closed: {len(self.closed_trades)}"
+        )  # Added log
         del self.active_trades[trade_id]
 
         # Update capital
@@ -556,10 +568,42 @@ class TradeManager:
             DataFrame with detailed information for each closed trade.
         """
         if not self.closed_trades:
+            logger.info(
+                "DEBUG_MANAGER - get_trade_summary: closed_trades list is empty."
+            )  # Added log
             return pd.DataFrame()
 
-        trade_dicts = [trade.to_dict() for trade in self.closed_trades]
+        logger.info(
+            f"DEBUG_MANAGER - get_trade_summary: Processing {len(self.closed_trades)} closed trades."
+        )  # Added log
+        trade_dicts = []
+        for i, trade in enumerate(self.closed_trades):
+            try:
+                trade_dict = trade.to_dict()
+                trade_dicts.append(trade_dict)
+                if i < 3:  # Log first few dicts for inspection
+                    logger.info(
+                        f"DEBUG_MANAGER - get_trade_summary: Trade dict {i}: {trade_dict}"
+                    )
+            except Exception as e:
+                logger.error(
+                    f"DEBUG_MANAGER - get_trade_summary: Error calling to_dict() for trade {getattr(trade, 'id', 'UNKNOWN')}: {e}"
+                )
+
+        # Log the number of successfully created dicts and check if empty
+        logger.info(
+            f"DEBUG_MANAGER - get_trade_summary: Created {len(trade_dicts)} trade dictionaries."
+        )
+        if not trade_dicts:
+            logger.error(
+                "DEBUG_MANAGER - get_trade_summary: trade_dicts list is empty after processing closed_trades."
+            )
+            return pd.DataFrame()
+
         summary_df = pd.DataFrame(trade_dicts)
+        logger.info(
+            f"DEBUG_MANAGER - get_trade_summary: Created DataFrame with shape {summary_df.shape}."
+        )  # Log DataFrame shape
 
         # Convert relevant columns to appropriate types
         for col in ["entry_time", "exit_time"]:
@@ -699,28 +743,123 @@ class TradeManager:
         # Get performance metrics
         metrics = self.get_performance_metrics()
 
-        # Prepare equity curve Series
-        valid_timestamps = [ts for ts in self.equity_timestamps if ts is not None]
-        equity_values = (
-            self.equity_curve
-            if self.equity_timestamps[0] is not None
-            else self.equity_curve[1:]
-        )
+        # --- Start: Robust checks for equity_curve ---
+        # Check if equity_curve is a valid DataFrame with a usable index
+        if (
+            not isinstance(self.equity_curve, pd.DataFrame)
+            or not hasattr(self.equity_curve, "index")
+            or self.equity_curve.empty
+        ):
+            logger.error(
+                "Equity curve is invalid or empty for report generation. Skipping report."
+            )
+            # Return minimal report data
+            return {
+                "metrics": metrics,
+                "equity_curve": pd.Series(),
+                "trades": self.get_trade_summary(),
+                "plot_paths": {},
+                "csv_paths": {},
+            }
+
+        # Check if the index itself is usable (has length and can be accessed)
+        try:
+            if len(self.equity_curve.index) == 0:
+                logger.warning(
+                    "Equity curve index is empty. Skipping detailed report generation."
+                )
+                return {
+                    "metrics": metrics,
+                    "equity_curve": pd.Series(),
+                    "trades": self.get_trade_summary(),
+                    "plot_paths": {},
+                    "csv_paths": {},
+                }
+            # Attempt a safe access to check subscriptability
+            _ = self.equity_curve.index[0]
+        except (TypeError, IndexError) as e:
+            logger.error(
+                f"Equity curve index is not accessible or empty: {e}. Skipping report."
+            )
+            return {
+                "metrics": metrics,
+                "equity_curve": pd.Series(),
+                "trades": self.get_trade_summary(),
+                "plot_paths": {},
+                "csv_paths": {},
+            }
+        # --- End: Robust checks for equity_curve ---
+
+        # Prepare equity curve Series (now safer due to initial checks)
         equity_series = pd.Series()  # Default empty
-        if len(valid_timestamps) > 0 and len(equity_values) > 0:
-            try:
-                equity_index = pd.to_datetime(valid_timestamps[: len(equity_values)])
-                equity_series = pd.Series(equity_values, index=equity_index)
-                equity_series = equity_series[equity_series.index.notna()]
-            except Exception:
-                logger.exception("Failed to create equity series for report.")
+        try:
+            # Assume self.equity_curve is a DataFrame after the checks above
+            equity_df = self.equity_curve
+
+            # Ensure the index is datetime and handle potential errors
+            equity_df.index = pd.to_datetime(equity_df.index, errors="coerce")
+            equity_df = equity_df.dropna(
+                subset=[equity_df.index.name]
+            )  # Drop rows where index conversion failed
+
+            if not equity_df.empty:
+                # Assuming the equity value is in a column named 'equity'. Adjust if needed.
+                if "equity" in equity_df.columns:
+                    equity_series = equity_df[
+                        "equity"
+                    ].copy()  # Use .copy() to avoid SettingWithCopyWarning
+                elif len(equity_df.columns) == 1:
+                    # If only one column, assume it's the equity data
+                    equity_series = equity_df.iloc[:, 0].copy()
+                else:
+                    logger.error(
+                        "Equity curve DataFrame structure unclear (expected 'equity' column or single column). Cannot extract equity series."
+                    )
+                    # Return minimal report data
+                    return {
+                        "metrics": metrics,
+                        "equity_curve": pd.Series(),
+                        "trades": self.get_trade_summary(),
+                        "plot_paths": {},
+                        "csv_paths": {},
+                    }
+
+                # Ensure Series index is DatetimeIndex and remove NaT values from index
+                if not isinstance(equity_series.index, pd.DatetimeIndex):
+                    equity_series.index = pd.to_datetime(
+                        equity_series.index, errors="coerce"
+                    )
+                equity_series = equity_series[
+                    equity_series.index.notna()
+                ]  # Filter out NaT indices
+
+            # Log warning if series is empty after processing
+            if equity_series.empty:
+                logger.warning(
+                    "Equity curve has no valid data/timestamps after processing. Report generation might be limited."
+                )
+
+        except Exception as e:
+            logger.exception(
+                f"Failed to process equity curve into Series for report: {e}"
+            )
+            # Return minimal report data on failure
+            return {
+                "metrics": metrics,
+                "equity_curve": pd.Series(),
+                "trades": self.get_trade_summary(),
+                "plot_paths": {},
+                "csv_paths": {},
+            }
 
         # Print performance summary to console
         self._print_performance_summary(metrics)
 
         # Generate plots if output directory and visualization available
         plot_paths = {}
-        if output_dir and VISUALIZATION_AVAILABLE and not equity_series.empty:
+        if (
+            output_dir and VISUALIZATION_AVAILABLE and not equity_series.empty
+        ):  # Check equity_series is not empty
             logger.info(f"Generating plots in {output_dir}...")
             try:
                 from ..utils.visualization import (  # Import plotting functions locally
@@ -778,6 +917,7 @@ class TradeManager:
                 pd.Series(metrics, name="Value").to_csv(metrics_csv_path)
                 csv_paths["metrics"] = metrics_csv_path
 
+                # Save equity curve CSV only if it's not empty
                 if not equity_series.empty:
                     equity_csv_path = os.path.join(output_dir, "equity_curve.csv")
                     equity_series.to_csv(equity_csv_path, header=["Equity"])

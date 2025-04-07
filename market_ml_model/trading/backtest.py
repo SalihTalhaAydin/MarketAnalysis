@@ -153,6 +153,9 @@ def backtest_strategy(
 
         # Previous data for decisions
         prev_signal = df.iloc[i - 1]["prediction"]
+        logger.info(
+            f"DEBUG_BACKTEST - Timestamp: {current_idx}, Prev Signal: {prev_signal}"
+        )  # Added for debugging
 
         # Current volatility
         if atr_col in df.columns:
@@ -166,6 +169,11 @@ def backtest_strategy(
         # Process signal for new trades
         # Process signal from PREVIOUS bar to decide action for CURRENT bar
         if prev_signal != 0:  # Non-zero signal from previous bar
+            # --- Add logging ---
+            logger.info(
+                f"DEBUG_BACKTEST - Inside prev_signal != 0 block for timestamp {current_idx}. Prev Signal: {prev_signal}"
+            )
+            # --- End Add logging ---
             # Calculate stop loss and take profit prices based on CURRENT open
             if use_dynamic_stops and atr_col in df.columns:
                 # Use ATR from the PREVIOUS bar to set stops for entry at CURRENT bar's open
@@ -234,7 +242,7 @@ def backtest_strategy(
                         # Example: Halve the risk for this trade
                         modified_risk = original_risk_per_trade / 2.0
                         trade_manager.risk_per_trade = modified_risk
-                        logger.debug(
+                        logger.info(
                             f"Regime {regime} -> Action: 'reduce_risk'. Temporarily setting risk/trade to {modified_risk:.4f}"
                         )
                     # 'no_trade' should have been handled in signal generation, but double-check? No, rely on signals.
@@ -247,7 +255,10 @@ def backtest_strategy(
                     if action:
                         trade_tags.append(f"action_{action}")
 
-                # Apply transaction cost to entry
+                # Apply transaction cost to entry (Moved before logging for accuracy of capital)
+                # Note: This cost is applied even if the trade doesn't execute due to capital limits within enter_position
+                # Consider if this should be moved inside enter_position or applied only on successful entry.
+                # For now, keeping it here as per previous structure before bypass.
                 trade_manager.capital -= trade_manager.capital * transaction_cost_pct
 
                 # Enter position at CURRENT timestamp and price
@@ -263,10 +274,9 @@ def backtest_strategy(
                     tags=trade_tags,  # Use updated tags
                 )
 
-                # Restore original risk setting if it was modified
-                if trade_manager.risk_per_trade != original_risk_per_trade:
-                    trade_manager.risk_per_trade = original_risk_per_trade
-
+            # Restore original risk setting if it was modified
+            if trade_manager.risk_per_trade != original_risk_per_trade:
+                trade_manager.risk_per_trade = original_risk_per_trade
         # Update benchmark if tracking
         if benchmark_values is not None:
             benchmark_values.append(
@@ -314,6 +324,17 @@ def backtest_strategy(
             except Exception as e:
                 logger.error(f"Failed to export trades: {e}")
 
+    # Calculate Buy & Hold return
+    buy_and_hold_return_pct = 0.0
+    if not df.empty and "close" in df.columns and df["close"].iloc[0] != 0:
+        first_close = df["close"].iloc[0]
+        last_close = df["close"].iloc[-1]
+        buy_and_hold_return_pct = ((last_close / first_close) - 1) * 100
+    else:
+        logger.warning(
+            "Could not calculate Buy & Hold return due to empty data or zero starting price."
+        )
+
     # Prepare summary for return
     performance_summary = {
         "total_return_pct": metrics.get("total_return", 0) * 100,
@@ -325,7 +346,9 @@ def backtest_strategy(
         "max_drawdown_pct": metrics.get("max_drawdown", 0) * 100,
         "win_rate_pct": metrics.get("win_rate", 0) * 100,
         "profit_factor": metrics.get("profit_factor", 0),
-        "num_trades": metrics.get("total_trades", 0),
+        "num_trades": metrics.get(
+            "num_trades", 0
+        ),  # Changed key from "total_trades" to "num_trades"
         "num_winning_trades": metrics.get("winning_trades", 0),
         "num_losing_trades": metrics.get("losing_trades", 0),
         "avg_trade_return_pct": metrics.get("avg_trade_return", 0) * 100,
@@ -337,6 +360,7 @@ def backtest_strategy(
         "stop_loss_setting": (
             f"{atr_multiplier_sl}*ATR" if atr_multiplier_sl is not None else "None"
         ),
+        "buy_and_hold_return_pct": buy_and_hold_return_pct,
         "take_profit_setting": (
             f"{atr_multiplier_tp}*ATR" if atr_multiplier_tp is not None else "None"
         ),

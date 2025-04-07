@@ -68,9 +68,10 @@ if __name__ == "__main__":
     # Basic config should be set up higher level if running as package,
     # but this is okay for direct script execution.
     logging.basicConfig(
-        level=logging.INFO,
+        level=logging.DEBUG,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         handlers=[logging.StreamHandler()],  # Log to console by default
     )
 
-    run_trading_strategy(config_file=args.config)
+    results = run_trading_strategy(config_file=args.config)
+    logger.info(f"Strategy Results: {results}")  # Print the results

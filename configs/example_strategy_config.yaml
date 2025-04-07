@@ -2,14 +2,14 @@
 # This file demonstrates how to configure a trading strategy.
 
 # General Strategy Settings
-strategy_name: "RSI_Mean_Reversion_Strategy"
-description: "A simple RSI Mean Reversion strategy (Buy < 30, Sell > 70)."
-strategy_type: "rsi_mean_reversion" # Select the RSI strategy logic
+strategy_name: "ML_Pipeline_Strategy"
+description: "Machine Learning pipeline strategy using configured features and model."
+strategy_type: "ml" # Select the ML strategy logic
 # sma_short_period: 50           # Commented out DMA param
 # sma_long_period: 200          # Commented out DMA param
-rsi_period: 14                  # RSI lookback period
-rsi_lower_threshold: 30         # RSI lower threshold for buy signal
-rsi_upper_threshold: 70         # RSI upper threshold for sell/exit signal
+# rsi_period: 14                  # RSI lookback period (Disabled for ML strategy)
+# rsi_lower_threshold: 30         # RSI lower threshold for buy signal (Disabled for ML strategy)
+# rsi_upper_threshold: 70         # RSI upper threshold for sell/exit signal (Disabled for ML strategy)
 log_level: "INFO" # Options: DEBUG, INFO, WARNING, ERROR, CRITICAL
 results_dir: "strategy_results" # Directory to save backtest results, plots, etc.
 data_start_date: "2018-01-01" # Overall start date for data loading
@@ -24,130 +24,148 @@ assets:
     # Optional: Specify timeframe if needed
     # timeframe: "1d" # e.g., '1m', '5m', '1h', '1d'
 
-# # Feature Engineering Configuration (Corresponds to FeatureConfig object) - Commented out for DMA
-# feature_config:
-#   # Technical Indicators (using pandas-ta or ta library conventions)
-#   technical_indicators:
-#     - indicator: "rsi"
-#       length: 14
-#     - indicator: "sma"
-#       length: 20
-#     - indicator: "sma"
-#       length: 50
-#     - indicator: "atr"
-#       length: 14
-#     - indicator: "macd"
-#       fast: 12  # Corrected parameter name for pandas-ta
-#       slow: 26  # Corrected parameter name for pandas-ta
-#       signal: 9 # Corrected parameter name for pandas-ta
-#     - indicator: "bollinger_bands"
-#       length: 20 # Corrected parameter name for pandas-ta
-#       std: 2    # Corrected parameter name for pandas-ta
-#     - indicator: "adx"
-#       window: 14
-#     - indicator: "obv"
-#     - indicator: "mfi"
-#       window: 14
-#     - indicator: "ema"
-#       length: 9
-#     - indicator: "ema"
-#       length: 21
-#     - indicator: "ema"
-#       length: 50
-#     # Add more indicators as needed...
-#
-#   # Enable/disable additional feature categories
-#   # fractal_window: 5 # Optional: Specify window if fractal_features is true (defaults to 5)
-#
-#   # Target variable config (Corresponds to FeatureConfig attributes)
-#   target_type: "triple_barrier" # 'triple_barrier', 'directional'
-#   # Parameters for Triple Barrier (if target_type is triple_barrier)
-#   atr_multiplier_tp: 2.0 # Profit Take multiple (from pt_sl[0]) - Adjusted for 2:1 ratio
-#   atr_multiplier_sl: 1.0 # Stop Loss multiple (from pt_sl[1])
-#   max_holding_period: 15 # Max holding period in bars
-#   # min_return: 0.001 # Not directly used by FeatureConfig init
-#   # volatility_lookback: 20 # Not directly used by FeatureConfig init
-#   # volatility_target: 0.01 # Not directly used by FeatureConfig init
-#   # Flags for new feature categories (added in Subtask 12)
-#   volatility_features: true
-#   regime_features: true
-#   momentum_features: true
-#   fractal_features: true # Enable fractals as well
-#
-#   # Feature Selection Configuration
-#   feature_selection_method:
-#     enabled: true # Whether to perform feature selection
-#     # Method for feature selection. Options:
-#     # 'importance': Use RandomForest feature importance.
-#     # 'mutual_info': Use mutual information (SelectKBest).
-#     # 'rfe': Use Recursive Feature Elimination (with Logistic Regression).
-#     # 'pca': Use Principal Component Analysis (dimensionality reduction, changes features).
-#     # 'model': Use feature importance from a specified model (e.g., lightgbm, xgboost).
-#     # null or 'none': Disable feature selection.
-#     method: "importance" # Default method
-#     params: # Parameters specific to the chosen method
-#       # For 'importance', 'mutual_info', 'rfe', 'model':
-#       n_features: 25 # Target number of features to select (adjust as needed)
-#       # For 'importance' (alternative to n_features):
-#       # threshold: 0.01 # Minimum importance threshold
-#       # For 'rfe':
-#       # step: 1 # Number of features to remove at each iteration
-#       # For 'pca':
-#       # n_components: 30 # Number of principal components
-#       # For 'model':
-#       # model_type: "lightgbm" # Model to use ('lightgbm' or 'xgboost')
-#       # threshold: "median" # Threshold for SelectFromModel
-#
-# # Feature Differencing (optional) - Commented out for DMA
-# # differencing:
-# #   apply: false # Set to true to enable differencing
-# #   period: 1 # Differencing period (usually 1)
-# #   # List of features to apply differencing to. If empty or null, applies to none.
-# #   # Example: ['sma_length20', 'sma_length50', 'ema_length12']
-# #   features: []
-#
-# # Feature Scaling (optional) - Commented out for DMA
-# # scaling:
-# #   # Options: 'StandardScaler', 'MinMaxScaler', 'RobustScaler', 'None' or null
-# #   method: "StandardScaler"
-# #   # Note: Scaling is typically applied *after* differencing if both are enabled.
-# #   #   apply_to: ["rsi", "sma_20", "sma_50"] # List of features to scale, or 'all'
-#
-# # Model Configuration (Corresponds to ModelConfig object) - Commented out for DMA
-# # model_config:
-# #   model_type: "lightgbm" # Use the key registered in model_factory.py
-# #   # Signal Generation Adjustments
-# #   probability_threshold: 0.1   # Significantly lowered threshold to generate more trades
-# #   signal_trend_filter_ma: null # Disable trend filter
-# #   signal_volatility_filter_atr: null # Disable volatility filter
-# #   # Original model params (adjust if needed for lightgbm) - Removed as not part of ModelConfig init
-# #   # params: # Parameters specific to the chosen model type
-# #   #   n_estimators: 100
-# #   #   max_depth: 10
-# #   #   min_samples_leaf: 5
-# #   #   random_state: 42
-# #   #   class_weight: "balanced" # Handle class imbalance
-# #   #   # Add other relevant scikit-learn/xgboost/etc. parameters
-# #
-# #   # Feature Selection (optional) - Removed as not part of ModelConfig init (handled in FeatureConfig)
-# #   # feature_selection:
-# #   #   method: null # e.g., "SelectKBest", "RFE", null
-# #   #   params: {} # Parameters for the selection method
-# #
-# #   # Hyperparameter Optimization (optional) - Keep disabled for now
-# #   optimize_hyperparams: false # Corresponds to ModelConfig attribute
-# #   # optimization_method: "bayesian" # Default if optimize_hyperparams is true
-# #   # optimization_trials: 100 # Default if optimize_hyperparams is true
-# #   # Search space removed as HPO is disabled and model is Logistic Regression
-# #   # hyperopt: # This sub-section isn't directly used by ModelConfig
-# #   #   enabled: false # Commented out - handled by optimize_hyperparams above
-# #   #   method: "optuna" # e.g., "optuna", "hyperopt"
-# #   #   n_trials: 50
-# #   #   metric: "accuracy" # Metric to optimize (e.g., 'accuracy', 'f1', 'roc_auc')
-# #   #   direction: "maximize" # 'maximize' or 'minimize'
-# #   #   # Define search space if needed (specific to optuna/hyperopt)
-# #   #   search_space: {}
-#
+# Feature Engineering Configuration (Corresponds to FeatureConfig object)
+feature_config:
+  # Technical Indicators (using pandas-ta or ta library conventions)
+  technical_indicators:
+    - indicator: "rsi"
+      length: 14
+    - indicator: "sma"
+      length: 20
+    - indicator: "sma"
+      length: 50
+    - indicator: "atr"
+      length: 14
+    - indicator: "macd"
+      fast: 12  # Corrected parameter name for pandas-ta
+      slow: 26  # Corrected parameter name for pandas-ta
+      signal: 9 # Corrected parameter name for pandas-ta
+    - indicator: "bollinger_bands"
+      length: 20 # Corrected parameter name for pandas-ta
+      std: 2    # Corrected parameter name for pandas-ta
+    - indicator: "adx"
+      window: 14
+    - indicator: "obv"
+    - indicator: "mfi"
+      window: 14
+    - indicator: "ema"
+      length: 9
+    - indicator: "ema"
+      length: 21
+    - indicator: "ema"
+      length: 50
+    # Add more indicators as needed...
+
+  # Enable/disable additional feature categories
+  # fractal_window: 5 # Optional: Specify window if fractal_features is true (defaults to 5)
+
+  # Target variable config (Corresponds to FeatureConfig attributes)
+  target_type: "triple_barrier" # 'triple_barrier', 'directional'
+  # Parameters for Triple Barrier (if target_type is triple_barrier)
+  atr_multiplier_tp: 2.0 # Profit Take multiple (from pt_sl[0]) - Adjusted for 2:1 ratio
+  atr_multiplier_sl: 1.0 # Stop Loss multiple (from pt_sl[1])
+  max_holding_period: 15 # Max holding period in bars
+  # min_return: 0.001 # Not directly used by FeatureConfig init
+  # volatility_lookback: 20 # Not directly used by FeatureConfig init
+  # volatility_target: 0.01 # Not directly used by FeatureConfig init
+  # Flags for new feature categories (added in Subtask 12)
+  volatility_features: true
+  regime_features: true
+  momentum_features: true
+  fractal_features: true # Enable fractals as well
+
+  # Correlation Filtering (Optional)
+  correlation_filter:
+    apply: true # Ensure correlation filtering is enabled
+    threshold: 0.9 # Set correlation threshold
+
+  # Feature Selection Configuration
+  feature_selection_method:
+    enabled: true # Whether to perform feature selection
+    # Method for feature selection. Options:
+    # 'importance': Use RandomForest feature importance.
+    # 'mutual_info': Use mutual information (SelectKBest).
+    # 'rfe': Use Recursive Feature Elimination (with Logistic Regression).
+    # 'pca': Use Principal Component Analysis (dimensionality reduction, changes features).
+    # 'model': Use feature importance from a specified model (e.g., lightgbm, xgboost).
+    # null or 'none': Disable feature selection.
+    method: "importance" # Use importance-based selection
+    params: # Parameters specific to the chosen method
+      # For 'importance', 'mutual_info', 'rfe', 'model':
+      n_features: 25 # Select top 25 features
+      # For 'importance' (alternative to n_features):
+      # threshold: 0.01 # Minimum importance threshold
+      # For 'rfe':
+      # step: 1 # Number of features to remove at each iteration
+      # For 'pca':
+      # n_components: 30 # Number of principal components
+      # For 'model':
+      # model_type: "lightgbm" # Model to use ('lightgbm' or 'xgboost')
+      # threshold: "median" # Threshold for SelectFromModel
+
+# Feature Differencing (optional)
+# differencing:
+#   apply: false # Set to true to enable differencing
+#   period: 1 # Differencing period (usually 1)
+#   # List of features to apply differencing to. If empty or null, applies to none.
+#   # Example: ['sma_length20', 'sma_length50', 'ema_length12']
+#   features: []
+
+# Feature Scaling (optional)
+# scaling:
+#   # Options: 'StandardScaler', 'MinMaxScaler', 'RobustScaler', 'None' or null
+#   method: "StandardScaler"
+#   # Note: Scaling is typically applied *after* differencing if both are enabled.
+#   #   apply_to: ["rsi", "sma_20", "sma_50"] # List of features to scale, or 'all'
+
+# Model Configuration (Corresponds to ModelConfig object)
+model_config:
+  model_type: "lightgbm" # Use the key registered in model_factory.py
+  # Signal Generation Adjustments
+  probability_threshold: 0.44   # Lowered threshold below observed max probability (~0.45)
+  signal_trend_filter_ma: null # Disable trend filter
+  signal_volatility_filter_atr: null # Disable volatility filter
+  signal_cooling_period: 0 # Disable cooling period
+  # Default model params (used if optimization is off or fails)
+  params: # Parameters specific to the chosen model type (lightgbm)
+    n_estimators: 100
+    # max_depth: 10 # Example, can add more defaults
+    # min_child_samples: 20 # Example
+    random_state: 42
+    # class_weight: "balanced" # Often useful for imbalanced data
+  #   # Add other relevant scikit-learn/xgboost/etc. parameters
+
+  # Feature Selection (optional) - Removed as not part of ModelConfig init (handled in FeatureConfig)
+  # feature_selection:
+  #   method: null # e.g., "SelectKBest", "RFE", null
+  #   params: {} # Parameters for the selection method
+
+  # Hyperparameter Optimization (optional) - Keep disabled for now
+  optimize_hyperparams: true # Corresponds to ModelConfig attribute - ENABLED
+  optimization_method: "optuna" # 'optuna', 'random', 'grid', 'bayesian' (if hyperopt installed)
+  optimization_trials: 3      # Number of trials for optuna/random/bayesian (DEBUG RUN)
+  cv_folds: 5                 # Cross-validation folds during optimization
+  scoring_metric: "f1_weighted" # Metric for optimization (must be supported by sklearn.model_selection.cross_val_score)
+  # Note: 'direction' (maximize/minimize) is often inferred by Optuna/sklearn based on the metric,
+  # but ensure the optimization objective function returns the metric correctly.
+
+  # Search space should be defined within model_config for StrategyConfig.from_dict to load it
+  search_space:
+    # Optuna suggestion format: [type, low, high, step/log]
+    # These names must match the expected hyperparameter names for the LightGBM model
+    learning_rate: ["float", 0.005, 0.1, true] # Log scale for learning rate
+    n_estimators: ["int", 50, 500, 50] # Step size of 50
+    num_leaves: ["int", 10, 100, 1]
+    max_depth: ["int", 3, 15, 1]
+    reg_alpha: ["float", 1e-8, 1.0, true] # L1 regularization (log scale)
+    reg_lambda: ["float", 1e-8, 1.0, true] # L2 regularization (log scale)
+    colsample_bytree: ["float", 0.6, 1.0, false] # Feature fraction
+    subsample: ["float", 0.6, 1.0, false] # Data fraction (bagging)
+    min_child_samples: ["int", 5, 50, 1] # Minimum number of data needed in a child leaf
+    # Add other LightGBM parameters as needed, e.g.:
+    # boosting_type: ["categorical", ["gbdt", "dart"]]
+    # min_split_gain: ["float", 0.0, 0.5, false]
+
 # # Walk-Forward Validation Configuration # Ensure this starts at column 0 - Commented out for DMA
 # # walk_forward:
 # #   enabled: true

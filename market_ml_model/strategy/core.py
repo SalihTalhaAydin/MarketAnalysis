@@ -38,12 +38,11 @@ try:
 
     # Feature Engineering
     from ..features.features_engineering import engineer_features
-    from ..features.technical.indicators import PANDAS_TA_AVAILABLE  # Import check
+    # from ..features.technical.indicators import * # Removed as no indicators are directly used here after pandas-ta removal
 
-    if PANDAS_TA_AVAILABLE:
-        import pandas_ta as ta  # Import ta if available
-    else:
-        ta = None  # Define ta as None if not available
+    # pandas-ta is no longer a dependency, ta is not available.
+    # Code using ta (e.g., ta.rsi, ta.atr) will need refactoring or removal.
+    ta = None
 
     # Model Training & Prediction
     from ..models.training import (
@@ -161,8 +160,8 @@ class EnhancedTradingStrategy:
             # Assuming DataLoaderConfig can be created simply or needs more details from self.config
             # Note: DataLoaderConfig might require more specific arguments based on its definition.
             loader_config = DataLoaderConfig(
-                start_date=self.config.data_start_date,
-                end_date=self.config.data_end_date,
+                default_start_date=self.config.data_start_date,
+                default_end_date=self.config.data_end_date,  # Corrected parameter name
                 # Add other necessary params from self.config if needed by DataLoaderConfig
             )
             loader = DataLoader(loader_config)
@@ -208,13 +207,69 @@ class EnhancedTradingStrategy:
             return None, None
         logger.info(f"Engineering features for {asset_config.symbol}...")
         try:
-            # Pass the FeatureConfig object directly
-            features_df, target_series = engineer_features(
-                data, self.config.feature_config
+            # engineer_features returns a single DataFrame with features and target
+            processed_data = engineer_features(
+                data, self.config.feature_config.to_dict()
             )
-            if features_df is None or target_series is None:
+
+            if processed_data is None or processed_data.empty:
                 logger.error(
-                    f"Feature engineering returned None for {asset_config.symbol}"
+                    f"Feature engineering returned None or empty DataFrame for {asset_config.symbol}"
+                )
+                return None, None
+
+            # Determine target column name based on config
+            target_col_name = None
+            target_type = self.config.feature_config.target_type
+            if target_type == "triple_barrier":
+                target_col_name = (
+                    "triple_barrier_label"  # Assuming default naming convention
+                )
+            elif target_type == "directional":
+                target_col_name = (
+                    "directional_label"  # Assuming default naming convention
+                )
+            # Add more target types if necessary
+
+            # Sanitize column names in the returned df before checking
+            processed_data.columns = (
+                processed_data.columns.str.replace(r"[\s\(\)\%\.]+", "_", regex=True)
+                .str.replace(r"_+", "_", regex=True)
+                .str.strip("_")
+            )
+
+            if target_col_name and target_col_name in processed_data.columns:
+                target_series = processed_data[target_col_name]
+                # Features are all columns EXCEPT the target column
+                features_df = processed_data.drop(columns=[target_col_name])
+                # Also drop original OHLCV columns if they are not intended as features
+                ohlcv_cols = [
+                    "open",
+                    "high",
+                    "low",
+                    "close",
+                    "volume",
+                    "adj_close",
+                ]  # Add others if needed
+                cols_to_drop = [
+                    col
+                    for col in ohlcv_cols
+                    if col in features_df.columns and col != target_col_name
+                ]
+                if cols_to_drop:
+                    features_df = features_df.drop(columns=cols_to_drop)
+
+            else:
+                logger.error(
+                    f"Target column '{target_col_name}' not found in processed data for {asset_config.symbol}. Cannot proceed."
+                )
+                return None, None  # Cannot proceed without target
+
+            if (
+                features_df is None or target_series is None
+            ):  # Should not happen if target_col_name check passed
+                logger.error(
+                    f"Failed to separate features and target for {asset_config.symbol}"
                 )
                 return None, None
             logger.info(
@@ -299,12 +354,11 @@ class EnhancedTradingStrategy:
                 train_classification_model(
                     features=aligned_features,
                     target=aligned_target,
-                    model_type=model_type,
                     model_config=self.config.model_config,  # Pass the whole ModelConfig
-                    feature_config=self.config.feature_config,  # Pass FeatureConfig for scaling/diff info
+                    # feature_config removed - not a valid argument
                     random_state=self.config.random_state,
                     output_dir=model_output_dir,  # Pass specific dir for this artifact
-                    search_space=self.config.search_space,  # Pass search space if defined
+                    # search_space removed - not a valid argument
                 )
             )
 
@@ -325,7 +379,7 @@ class EnhancedTradingStrategy:
             joblib.dump(model, model_save_path)
             joblib.dump(preprocessor, preprocessor_save_path)
             with open(features_save_path, "w") as f:
-                json.dump(selected_features, f)
+                json.dump(selected_features.tolist(), f)
             with open(metrics_save_path, "w") as f:
                 json.dump(
                     metrics, f, indent=4, default=str
@@ -449,19 +503,20 @@ class EnhancedTradingStrategy:
             logger.info(
                 f"Predictions generated successfully for {asset_config.symbol} (Fold: {fold_id}, Regime: {regime})."
             )
-            return predictions_df
+            return predictions_df, class_names  # Return class_names as well
 
         except Exception as e:
             logger.exception(
                 f"Error generating predictions for {asset_config.symbol} (Fold: {fold_id}, Regime: {regime}): {e}"
             )
-            return None
+            return None, None  # Return None for class_names on failure
 
     def generate_signals(
         self,
         predictions: pd.DataFrame,
         ohlc_data: pd.DataFrame,  # Pass raw OHLCV data for filters
         asset_config: AssetConfig,
+        class_names: List[str],  # <-- Add class_names parameter
         regime: Optional[int] = None,
         regime_actions: Optional[Dict[int, str]] = None,
     ) -> Optional[pd.DataFrame]:
@@ -483,6 +538,8 @@ class EnhancedTradingStrategy:
                 model_config=self.config.model_config,  # Pass ModelConfig for thresholds, filters etc.
                 feature_config=self.config.feature_config,  # Pass FeatureConfig if needed for filters
                 trading_config=self.config.trading_config,  # Pass TradingConfig if needed
+                threshold=self.config.model_config.probability_threshold,  # Explicitly pass threshold
+                class_names=class_names,  # <-- Pass class_names to constructor
             )
 
             # Generate signals using the generator
@@ -578,8 +635,11 @@ class EnhancedTradingStrategy:
         if not rsi_period or lower_thresh is None or upper_thresh is None:
             logger.error("RSI parameters (period, lower, upper) not fully configured.")
             return None
-        if not PANDAS_TA_AVAILABLE:
-            logger.error("pandas_ta library is required for RSI calculation.")
+        # pandas-ta is removed. This function relies on it and will fail.
+        if ta is None:  # Check if ta object exists (it shouldn't)
+            logger.error(
+                "pandas_ta library was required for RSI calculation but is not available."
+            )
             return None
         if "close" not in data.columns:
             logger.error("Close price column missing for RSI calculation.")
@@ -664,15 +724,81 @@ class EnhancedTradingStrategy:
 
         try:
             # Use the backtest_strategy function
+            # Combine aligned data and signals for the backtester
+            # Ensure the signal column is named 'prediction' as expected by backtest_strategy
+            backtest_input_df = aligned_data.copy()
+            if "signal" in aligned_signals.columns:
+                # Direct assignment using the already aligned index from line 689
+                backtest_input_df["prediction"] = (
+                    aligned_signals["signal"].fillna(0).astype(int)
+                )
+                # Log after assignment to confirm
+                logger.info(
+                    f"DEBUG_CORE - 'prediction' column AFTER direct assignment (first 5): {backtest_input_df['prediction'].head().tolist()}"
+                )
+                logger.info(
+                    f"DEBUG_CORE - Value counts AFTER direct assignment:\n{backtest_input_df['prediction'].value_counts().to_string()}"
+                )
+            else:
+                logger.warning(
+                    "DEBUG_CORE - 'signal' column not found in aligned_signals."
+                )
+                # Ensure prediction column exists even if signals failed, filled with 0
+                backtest_input_df["prediction"] = 0
+
+            # Prepare arguments from configuration
+            trading_cfg = self.config.trading_config
+            backtest_args = {
+                "transaction_cost_pct": trading_cfg.commission_pct,  # Use defined commission_pct
+                "slippage_pct_per_trade": trading_cfg.slippage_pct,  # Use defined slippage_pct
+                "initial_capital": trading_cfg.initial_capital,
+                "risk_per_trade": trading_cfg.fixed_fraction_amount,  # Use the attribute set from config
+                "use_kelly_sizing": getattr(
+                    trading_cfg, "use_kelly_sizing", False
+                ),  # Use getattr for safety
+                "atr_multiplier_sl": trading_cfg.atr_multiplier_sl,
+                "atr_multiplier_tp": trading_cfg.atr_multiplier_tp,
+                "atr_col": trading_cfg.atr_col,
+                "trailing_stop_pct": trading_cfg.trailing_stop_pct,
+                "trailing_stop_activation_pct": trading_cfg.trailing_stop_activation_pct,
+                "max_open_trades": trading_cfg.max_open_trades,
+                "max_drawdown_pct": trading_cfg.max_drawdown_pct,
+                "use_dynamic_stops": trading_cfg.use_dynamic_stops,
+                # Use signal_threshold from trading_cfg if available, else default from backtest_strategy
+                "signal_threshold": getattr(trading_cfg, "signal_threshold", 0.6),
+                "allow_pyramiding": trading_cfg.allow_pyramiding,
+                "benchmark_col": getattr(
+                    trading_cfg, "benchmark_col", "Close"
+                ),  # Use getattr for safe access
+                "output_dir": backtest_output_dir,
+                # Define standard path for trades CSV within the fold/regime directory
+                "output_trades_path": os.path.join(backtest_output_dir, "trades.csv"),
+                # Make saving report configurable or default to True/False
+                "save_detailed_report": getattr(
+                    trading_cfg, "save_detailed_report", True
+                ),
+                "regime": regime,  # Pass regime from context
+                "regime_actions": regime_actions,  # Pass regime_actions from context
+            }
+
+            # --- Add logging ---
+            # Log the head of the prediction column before calling backtest
+            if "prediction" in backtest_input_df.columns:
+                logger.info(
+                    f"DEBUG_CORE - Head of 'prediction' column passed to backtest_strategy:\n{backtest_input_df['prediction'].head().to_string()}"
+                )  # Use to_string() for better formatting
+                logger.info(
+                    f"DEBUG_CORE - Value counts of 'prediction' column:\n{backtest_input_df['prediction'].value_counts().to_string()}"
+                )  # Use to_string()
+            else:
+                logger.warning(
+                    "DEBUG_CORE - 'prediction' column not found before calling backtest_strategy."
+                )
+            # --- End Add logging ---
+
+            # Call the backtest_strategy function with the correct arguments
             results = backtest_strategy(
-                signals=aligned_signals,
-                data=aligned_data,
-                strategy_config=self.config,  # Pass the main StrategyConfig
-                asset_config=asset_config,  # Pass the specific AssetConfig
-                output_dir=backtest_output_dir,  # Pass specific dir for results/plots
-                # Pass regime info if needed by backtester (e.g., for regime-specific actions)
-                current_regime=regime,
-                regime_actions=regime_actions,
+                data_with_predictions=backtest_input_df, **backtest_args
             )
 
             if results is None:
@@ -711,6 +837,24 @@ class EnhancedTradingStrategy:
                 "status": "error",
                 "message": "Data loading failed for walk-forward",
             }
+
+        # --- Calculate Overall Buy & Hold for the entire period ---
+        overall_buy_and_hold_return_pct = None
+        if (
+            not full_data.empty
+            and "close" in full_data.columns
+            and full_data["close"].iloc[0] != 0
+        ):
+            first_close = full_data["close"].iloc[0]
+            last_close = full_data["close"].iloc[-1]
+            overall_buy_and_hold_return_pct = ((last_close / first_close) - 1) * 100
+            logger.info(
+                f"Overall Buy & Hold Return for {asset_config.symbol}: {overall_buy_and_hold_return_pct:.2f}%"
+            )
+        else:
+            logger.warning(
+                f"Could not calculate overall Buy & Hold return for {asset_config.symbol}."
+            )
 
         # Engineer features on the entire dataset once if strategy is ML-based
         full_features, full_target = None, None
@@ -927,11 +1071,13 @@ class EnhancedTradingStrategy:
 
                 predictions_df = None
                 if model_artifacts_path:  # Ensure we have a valid path for ML model
-                    predictions_df = self.generate_predictions(
-                        test_features_raw,
-                        asset_config,
-                        fold_id=fold_id if needs_retrain else last_fold_id,
-                        regime=current_regime,
+                    predictions_df, class_names = (
+                        self.generate_predictions(  # Capture class_names
+                            test_features_raw,
+                            asset_config,
+                            fold_id=fold_id if needs_retrain else last_fold_id,
+                            regime=current_regime,
+                        )
                     )
                 else:  # No valid model_artifacts_path for ML
                     logger.error(
@@ -956,13 +1102,21 @@ class EnhancedTradingStrategy:
                 logger.info(
                     f"Generating signals from ML predictions for step {step}..."
                 )
-                signals_df = self.generate_signals(
-                    predictions_df,
-                    test_data,  # Pass raw test OHLCV for filters
-                    asset_config,
-                    regime=current_regime,
-                    regime_actions=self.config.market_regime_config.regime_actions,
-                )
+                # Ensure class_names is available before calling
+                if class_names is not None and class_names.size > 0:
+                    signals_df = self.generate_signals(
+                        predictions_df,
+                        test_data,  # Pass raw test OHLCV for filters
+                        asset_config,
+                        class_names,  # <-- Pass class_names
+                        regime=current_regime,
+                        regime_actions=self.config.market_regime_config.regime_actions,
+                    )
+                else:
+                    logger.error(
+                        f"Class names missing for signal generation in step {step}. Skipping signals."
+                    )
+                    signals_df = None  # Or handle appropriately
 
                 if signals_df is None:
                     logger.error(
@@ -1021,9 +1175,14 @@ class EnhancedTradingStrategy:
                     try:
                         # Assuming default ATR period (e.g., 14) if not specified elsewhere for stops
                         atr_period_for_stops = 14  # Make this configurable if needed
-                        if PANDAS_TA_AVAILABLE and all(
-                            c in backtest_input_data.columns
-                            for c in ["high", "low", "close"]
+                        # pandas-ta is removed. ATR calculation using ta.atr is not possible.
+                        # Need alternative ATR calculation if dynamic stops are required.
+                        if (
+                            False
+                            and all(  # Keep structure, but ensure condition is false
+                                c in backtest_input_data.columns
+                                for c in ["high", "low", "close"]
+                            )
                         ):
                             atr_series = ta.atr(
                                 backtest_input_data["high"],
@@ -1167,7 +1326,9 @@ class EnhancedTradingStrategy:
         )
 
         # Combine results
-        wf_summary = self.summarize_walk_forward_results(wf_results_list, asset_config)
+        wf_summary = self.summarize_walk_forward_results(
+            wf_results_list, asset_config, overall_buy_and_hold_return_pct
+        )
 
         # Combine all trades if collected
         combined_trades_df = (
@@ -1216,7 +1377,10 @@ class EnhancedTradingStrategy:
         return {"walk_forward_summary": wf_summary}  # Return summary nested under a key
 
     def summarize_walk_forward_results(
-        self, wf_results_list: List[Dict], asset_config: AssetConfig
+        self,
+        wf_results_list: List[Dict],
+        asset_config: AssetConfig,
+        overall_buy_and_hold_return_pct: Optional[float] = None,  # Added parameter
     ) -> Dict:
         """Summarize results from all walk-forward steps."""
         if not wf_results_list:
@@ -1247,6 +1411,8 @@ class EnhancedTradingStrategy:
         # Calculate compounded return across folds
         compounded_return = (1 + summary_df["total_return_pct"] / 100).prod() - 1
         overall_metrics["compounded_return_pct"] = compounded_return * 100
+        # Add the overall Buy & Hold return passed from the validation function
+        overall_metrics["buy_and_hold_return_pct"] = overall_buy_and_hold_return_pct
 
         # Calculate annualized return if possible
         try:
@@ -1325,18 +1491,19 @@ class EnhancedTradingStrategy:
             if not combined_trades.empty and "exit_time" in combined_trades.columns:
                 # Calculate equity curve from trades
                 trades_sorted = combined_trades.sort_values(by="exit_time")
-                # Ensure pnl_abs exists or calculate it
+                # Ensure pnl_abs exists or calculate it safely
                 if "pnl_abs" not in trades_sorted.columns:
+                    # Use .get() for potentially missing columns
+                    entry_price = trades_sorted.get("entry_price", np.nan)
+                    exit_price = trades_sorted.get("exit_price", np.nan)
+                    size = trades_sorted.get("size", np.nan)
+                    direction = trades_sorted.get("direction", np.nan)
+                    commission = trades_sorted.get("commission", 0)
                     trades_sorted["pnl_abs"] = (
-                        (trades_sorted["exit_price"] - trades_sorted["entry_price"])
-                        * trades_sorted["size"]
-                        * trades_sorted[
-                            "direction"
-                        ]  # Assumes direction is 1 for long, -1 for short
-                    ) - trades_sorted.get(
-                        "commission", 0
-                    )  # Subtract commission if available
-
+                        (exit_price - entry_price) * size * direction
+                    ) - commission
+                    # Handle potential NaNs resulting from missing data
+                    trades_sorted["pnl_abs"] = trades_sorted["pnl_abs"].fillna(0)
                 # Need initial capital to build equity curve accurately
                 initial_cap = self.config.trading_config.initial_capital
                 trades_sorted["equity"] = (
@@ -1355,16 +1522,44 @@ class EnhancedTradingStrategy:
                     equity_curve.reindex(wf_data_index).ffill().fillna(initial_cap)
                 )
 
-                plot_equity_curve(
-                    full_equity,
-                    title=f"{asset_config.symbol} Walk-Forward Equity Curve",
-                    ax=axes[0],
-                )  # Pass ax
-                # Also plot drawdowns on the same axis if function supports it or on a twin axis
-                plot_drawdowns(
-                    full_equity, ax=axes[0].twinx(), color="red", alpha=0.3
-                )  # Example on twin axis
+                # Check if full_equity is valid before plotting
+                if isinstance(full_equity, pd.Series) and not full_equity.empty:
+                    plot_equity_curve(
+                        full_equity,
+                        title=f"{asset_config.symbol} Walk-Forward Equity Curve",
+                        ax=axes[0],
+                    )  # Pass ax for equity curve
 
+                    # Calculate returns from equity for plot_drawdowns
+                    equity_returns = full_equity.pct_change().fillna(0)
+                    # Call plot_drawdowns with returns and remove invalid args
+                    # Note: This will create a separate plot as it doesn't accept 'ax'
+                    plot_drawdowns(equity_returns)
+                    # Add a note on the plot indicating drawdowns might be separate
+                    axes[0].text(
+                        0.01,
+                        0.01,
+                        "Drawdowns plotted separately",
+                        transform=axes[0].transAxes,
+                        fontsize=8,
+                        color="gray",
+                    )
+
+                else:
+                    logger.warning(
+                        f"Full equity curve is invalid or empty for {asset_config.symbol}. Skipping equity/drawdown plot."
+                    )
+                    axes[0].set_title(
+                        f"{asset_config.symbol} Walk-Forward Equity (Invalid/Empty)"
+                    )
+                    axes[0].text(
+                        0.5,
+                        0.5,
+                        "Equity data unavailable",
+                        horizontalalignment="center",
+                        verticalalignment="center",
+                        transform=axes[0].transAxes,
+                    )
             else:
                 axes[0].set_title(
                     f"{asset_config.symbol} Walk-Forward Equity (Trades Missing or Invalid)"
@@ -1521,20 +1716,30 @@ class EnhancedTradingStrategy:
                     return {"status": "error", "message": "Model training failed"}
 
                 # --- Generate Predictions (Only for ML workflow) ---
-                predictions = self.generate_predictions(
-                    features, asset_cfg, regime=current_regime
+                predictions, class_names = (
+                    self.generate_predictions(  # Capture class_names
+                        features, asset_cfg, regime=current_regime
+                    )
                 )
                 if predictions is None:
                     return {"status": "error", "message": "Prediction failed"}
 
                 # --- Generate Signals from Predictions (Only for ML workflow) ---
-                signals = self.generate_signals(
-                    predictions,
-                    data,  # Pass original OHLCV data for filters
-                    asset_cfg,
-                    regime=current_regime,
-                    regime_actions=self.config.market_regime_config.regime_actions,
-                )
+                # Ensure class_names is available before calling
+                if class_names:
+                    signals = self.generate_signals(
+                        predictions,
+                        data,  # Pass original OHLCV data for filters
+                        asset_cfg,
+                        class_names,  # <-- Pass class_names
+                        regime=current_regime,
+                        regime_actions=self.config.market_regime_config.regime_actions,
+                    )
+                else:
+                    logger.error(
+                        "Class names missing for signal generation. Skipping signals."
+                    )
+                    signals = None  # Or handle appropriately
                 if signals is None:
                     return {
                         "status": "error",
@@ -1566,7 +1771,9 @@ class EnhancedTradingStrategy:
                 # Optionally calculate ATR here if needed by backtester
                 try:
                     atr_period_for_stops = 14  # Make this configurable if needed
-                    if PANDAS_TA_AVAILABLE and all(
+                    # pandas-ta is removed. ATR calculation using ta.atr is not possible.
+                    # Need alternative ATR calculation if dynamic stops are required.
+                    if False and all(  # Keep structure, but ensure condition is false
                         c in backtest_input_data.columns
                         for c in ["high", "low", "close"]
                     ):

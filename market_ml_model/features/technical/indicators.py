@@ -11,19 +11,7 @@ import pandas as pd
 # Setup logging
 logger = logging.getLogger(__name__)
 
-# Import technical analysis library (pandas-ta)
-# Assume it's installed via requirements.txt
-try:
-    import pandas_ta as ta
-
-    PANDAS_TA_AVAILABLE = True
-    logger.info("pandas-ta library loaded successfully.")
-except ImportError:
-    logger.warning(
-        "pandas-ta not found. Please install it (`pip install pandas-ta`) to use technical indicators."
-    )
-    ta = None  # Define ta as None if import fails
-    PANDAS_TA_AVAILABLE = False
+# pandas-ta import removed. Indicators relying on it will be skipped or need manual implementation.
 # Try importing advanced stats libraries
 try:
     from arch import arch_model
@@ -38,8 +26,363 @@ except ImportError:
     ADVANCED_STATS = False
 
 
-# Remove this line
-# ... (other imports remain the same)
+# Helper function for ATR calculation using pandas/numpy
+def _calculate_atr_pandas(
+    high: pd.Series, low: pd.Series, close: pd.Series, length: int = 14
+) -> pd.Series:
+    """Calculates Average True Range (ATR) using pandas."""
+    if not all(isinstance(s, pd.Series) for s in [high, low, close]):
+        # Log error instead of raising, return empty series
+        logger.error("ATR calculation inputs must be pandas Series.")
+        return pd.Series(
+            dtype=float, index=close.index
+        )  # Return empty series matching index
+    if (
+        high.empty
+        or low.empty
+        or close.empty
+        or len(high) < length
+        or len(low) < length
+        or len(close) < length
+    ):
+        # Return NaN series if input is empty or too short
+        logger.warning(
+            f"ATR calculation input data is empty or shorter than length {length}."
+        )
+        return pd.Series(np.nan, index=close.index)
+
+    prev_close = close.shift(1)
+    tr1 = high - low
+    tr2 = abs(high - prev_close)
+    tr3 = abs(low - prev_close)
+
+    # Ensure alignment before max operation, fill initial NaN in prev_close
+    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1, skipna=False)
+    tr.iloc[0] = np.nan  # First TR is undefined
+
+    # Calculate ATR using Exponential Moving Average (EMA) - Wilder's Smoothing (RMA)
+    # pandas ewm adjust=False matches Wilder's smoothing.
+    # Use min_periods=length to ensure enough data before starting calculation.
+    atr = tr.ewm(alpha=1 / length, adjust=False, min_periods=length).mean()
+    logger.debug(f"Calculated ATR with length {length} using pandas/numpy.")
+    return atr
+
+
+# Helper function for SMA calculation using pandas/numpy
+def _calculate_sma_pandas(series: pd.Series, length: int) -> pd.Series:
+    """Calculates Simple Moving Average (SMA) using pandas."""
+    if not isinstance(series, pd.Series):
+        logger.error("SMA calculation input must be a pandas Series.")
+        return pd.Series(
+            dtype=float, index=series.index if hasattr(series, "index") else None
+        )
+    if series.empty or len(series) < length:
+        logger.warning(
+            f"SMA calculation input data is empty or shorter than length {length}."
+        )
+        return pd.Series(np.nan, index=series.index)
+    sma = series.rolling(window=length, min_periods=length).mean()
+    logger.debug(f"Calculated SMA with length {length} using pandas/numpy.")
+    return sma
+
+
+# Helper function for EMA calculation using pandas/numpy
+def _calculate_ema_pandas(series: pd.Series, length: int) -> pd.Series:
+    """Calculates Exponential Moving Average (EMA) using pandas."""
+    if not isinstance(series, pd.Series):
+        logger.error("EMA calculation input must be a pandas Series.")
+        return pd.Series(
+            dtype=float, index=series.index if hasattr(series, "index") else None
+        )
+    if series.empty or len(series) < length:
+        logger.warning(
+            f"EMA calculation input data is empty or shorter than length {length}."
+        )
+        return pd.Series(np.nan, index=series.index)
+    # Standard EMA uses span
+    ema = series.ewm(span=length, adjust=False, min_periods=length).mean()
+    logger.debug(f"Calculated EMA with length {length} using pandas/numpy.")
+    return ema
+
+
+# Helper function for RSI calculation using pandas/numpy
+def _calculate_rsi_pandas(close: pd.Series, length: int = 14) -> pd.Series:
+    """Calculates Relative Strength Index (RSI) using pandas."""
+    if not isinstance(close, pd.Series):
+        logger.error("RSI calculation input must be a pandas Series.")
+        return pd.Series(
+            dtype=float, index=close.index if hasattr(close, "index") else None
+        )
+    if close.empty or len(close) < length + 1:  # Need length+1 for diff
+        logger.warning(
+            f"RSI calculation input data is empty or shorter than length+1 ({length+1})."
+        )
+        return pd.Series(np.nan, index=close.index)
+
+    delta = close.diff()
+    gain = delta.where(delta > 0, 0.0)
+    loss = -delta.where(delta < 0, 0.0)
+
+    # Use Wilder's smoothing (alpha = 1 / length) like pandas-ta
+    avg_gain = gain.ewm(alpha=1 / length, adjust=False, min_periods=length).mean()
+    avg_loss = loss.ewm(alpha=1 / length, adjust=False, min_periods=length).mean()
+
+    # Handle division by zero
+    rs = avg_gain / avg_loss.replace(0, np.nan)  # Avoid division by zero, result is NaN
+    rsi = 100.0 - (100.0 / (1.0 + rs))
+
+    # Fill initial NaNs from calculation start
+    rsi[:length] = np.nan
+
+    logger.debug(f"Calculated RSI with length {length} using pandas/numpy.")
+    return rsi
+
+
+# Helper function for MACD calculation using pandas/numpy
+def _calculate_macd_pandas(
+    close: pd.Series, fast: int = 12, slow: int = 26, signal: int = 9
+) -> pd.DataFrame:
+    """Calculates Moving Average Convergence Divergence (MACD) using pandas."""
+    if not isinstance(close, pd.Series):
+        logger.error("MACD calculation input must be a pandas Series.")
+        return pd.DataFrame(index=close.index if hasattr(close, "index") else None)
+    min_len = max(slow, fast) + signal - 1  # Approximate minimum length needed
+    if close.empty or len(close) < min_len:
+        logger.warning(
+            f"MACD calculation input data is empty or shorter than required length (~{min_len})."
+        )
+        return pd.DataFrame(
+            columns=[
+                f"MACD_{fast}_{slow}",
+                f"MACDs_{signal}",
+                f"MACDh_{fast}_{slow}_{signal}",
+            ],
+            index=close.index,
+        )
+
+    ema_fast = close.ewm(span=fast, adjust=False, min_periods=fast).mean()
+    ema_slow = close.ewm(span=slow, adjust=False, min_periods=slow).mean()
+    macd_line = ema_fast - ema_slow
+    signal_line = macd_line.ewm(span=signal, adjust=False, min_periods=signal).mean()
+    histogram = macd_line - signal_line
+
+    # Match common pandas-ta column naming structure
+    macd_df = pd.DataFrame(
+        {
+            f"MACD_{fast}_{slow}": macd_line,
+            f"MACDs_{signal}": signal_line,  # Signal line suffix often includes signal period
+            f"MACDh_{fast}_{slow}_{signal}": histogram,  # Histogram often includes all periods
+        },
+        index=close.index,
+    )
+
+    logger.debug(f"Calculated MACD ({fast},{slow},{signal}) using pandas/numpy.")
+    return macd_df
+
+
+# Helper function for Bollinger Bands calculation using pandas/numpy
+def _calculate_bbands_pandas(
+    close: pd.Series, length: int = 20, std: float = 2.0
+) -> pd.DataFrame:
+    """Calculates Bollinger Bands (BBands) using pandas."""
+    if not isinstance(close, pd.Series):
+        logger.error("BBands calculation input must be a pandas Series.")
+        return pd.DataFrame(index=close.index if hasattr(close, "index") else None)
+    if close.empty or len(close) < length:
+        logger.warning(
+            f"BBands calculation input data is empty or shorter than length {length}."
+        )
+        return pd.DataFrame(
+            columns=[
+                f"BBL_{length}_{std}",
+                f"BBM_{length}_{std}",
+                f"BBU_{length}_{std}",
+            ],
+            index=close.index,
+        )
+
+    sma = close.rolling(window=length, min_periods=length).mean()
+    rolling_std = close.rolling(window=length, min_periods=length).std()
+    upper_band = sma + (rolling_std * std)
+    lower_band = sma - (rolling_std * std)
+
+    # Match common pandas-ta column naming structure
+    bbands_df = pd.DataFrame(
+        {
+            f"BBL_{length}_{std}": lower_band,  # Lower Band
+            f"BBM_{length}_{std}": sma,  # Middle Band (SMA)
+            f"BBU_{length}_{std}": upper_band,  # Upper Band
+        },
+        index=close.index,
+    )
+
+    logger.debug(f"Calculated Bollinger Bands ({length},{std}) using pandas/numpy.")
+    return bbands_df
+
+
+# ADX Implementation
+def _calculate_adx_pandas(
+    high: pd.Series, low: pd.Series, close: pd.Series, length: int = 14
+) -> pd.DataFrame:
+    """Calculates Average Directional Index (ADX) using pandas."""
+    if not all(isinstance(s, pd.Series) for s in [high, low, close]):
+        logger.error("ADX calculation inputs must be pandas Series.")
+        return pd.DataFrame(index=close.index if hasattr(close, "index") else None)
+    min_len = length + 1  # Need length + 1 for diff
+    if (
+        high.empty
+        or low.empty
+        or close.empty
+        or len(high) < min_len
+        or len(low) < min_len
+        or len(close) < min_len
+    ):
+        logger.warning(
+            f"ADX calculation input data is empty or shorter than required length (~{min_len})."
+        )
+        return pd.DataFrame(
+            columns=[f"ADX_{length}", f"DMP_{length}", f"DMN_{length}"],
+            index=close.index,
+        )
+
+    # Calculate True Range (TR) - reusing ATR logic components
+    prev_close = close.shift(1)
+    tr1 = high - low
+    tr2 = abs(high - prev_close)
+    tr3 = abs(low - prev_close)
+    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1, skipna=False)
+    tr.iloc[0] = np.nan  # First TR is undefined
+
+    # Calculate Directional Movement (+DM, -DM)
+    move_up = high.diff()
+    move_down = -low.diff()  # Note the negative sign
+
+    plus_dm = pd.Series(0.0, index=high.index)
+    minus_dm = pd.Series(0.0, index=high.index)
+
+    plus_dm[(move_up > move_down) & (move_up > 0)] = move_up[
+        (move_up > move_down) & (move_up > 0)
+    ]
+    minus_dm[(move_down > move_up) & (move_down > 0)] = move_down[
+        (move_down > move_up) & (move_down > 0)
+    ]
+
+    # Use Wilder's smoothing (EMA with alpha = 1 / length)
+    atr = tr.ewm(alpha=1 / length, adjust=False, min_periods=length).mean()
+    plus_di = (
+        100
+        * plus_dm.ewm(alpha=1 / length, adjust=False, min_periods=length).mean()
+        / atr.replace(0, np.nan)
+    )
+    minus_di = (
+        100
+        * minus_dm.ewm(alpha=1 / length, adjust=False, min_periods=length).mean()
+        / atr.replace(0, np.nan)
+    )
+
+    # Calculate DX
+    dx = 100 * (abs(plus_di - minus_di) / (plus_di + minus_di).replace(0, np.nan))
+    dx.iloc[: length - 1] = np.nan  # DX calculation starts after initial smoothing
+
+    # Calculate ADX (Smoothed DX)
+    adx = dx.ewm(alpha=1 / length, adjust=False, min_periods=length).mean()
+    adx.iloc[: 2 * length - 2] = (
+        np.nan
+    )  # ADX requires DX to be smoothed, so more NaNs initially
+
+    # Match common pandas-ta column naming structure (approximate)
+    adx_df = pd.DataFrame(
+        {
+            f"ADX_{length}": adx,
+            f"DMP_{length}": plus_di,  # +DI
+            f"DMN_{length}": minus_di,  # -DI
+        },
+        index=close.index,
+    )
+
+    logger.debug(f"Calculated ADX ({length}) using pandas/numpy.")
+    return adx_df
+
+
+# OBV Implementation
+def _calculate_obv_pandas(close: pd.Series, volume: pd.Series) -> pd.Series:
+    """Calculates On Balance Volume (OBV) using pandas."""
+    if not isinstance(close, pd.Series) or not isinstance(volume, pd.Series):
+        logger.error("OBV calculation inputs must be pandas Series.")
+        return pd.Series(
+            dtype=float, index=close.index if hasattr(close, "index") else None
+        )
+    if close.empty or volume.empty or len(close) != len(volume):
+        logger.warning("OBV calculation input data is empty or lengths mismatch.")
+        return pd.Series(np.nan, index=close.index)
+
+    # Calculate OBV
+    signed_volume = volume * np.sign(close.diff()).fillna(
+        0
+    )  # Volume signed by price change direction
+    obv = signed_volume.cumsum()
+
+    logger.debug("Calculated OBV using pandas/numpy.")
+    return obv
+
+
+# MFI Implementation
+def _calculate_mfi_pandas(
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    volume: pd.Series,
+    length: int = 14,
+) -> pd.Series:
+    """Calculates Money Flow Index (MFI) using pandas."""
+    if not all(isinstance(s, pd.Series) for s in [high, low, close, volume]):
+        logger.error("MFI calculation inputs must be pandas Series.")
+        return pd.Series(
+            dtype=float, index=close.index if hasattr(close, "index") else None
+        )
+    min_len = length + 1  # Need length + 1 for diff
+    if high.empty or low.empty or close.empty or volume.empty or len(close) < min_len:
+        logger.warning(
+            f"MFI calculation input data is empty or shorter than required length (~{min_len})."
+        )
+        return pd.Series(np.nan, index=close.index)
+
+    # Calculate Typical Price
+    typical_price = (high + low + close) / 3
+
+    # Calculate Raw Money Flow
+    raw_money_flow = typical_price * volume
+
+    # Calculate Positive and Negative Money Flow
+    typical_price_diff = typical_price.diff()
+    positive_money_flow = raw_money_flow.where(typical_price_diff > 0, 0)
+    negative_money_flow = raw_money_flow.where(typical_price_diff < 0, 0)
+
+    # Calculate Money Flow Ratio
+    positive_mf_sum = positive_money_flow.rolling(
+        window=length, min_periods=length
+    ).sum()
+    negative_mf_sum = negative_money_flow.rolling(
+        window=length, min_periods=length
+    ).sum()
+
+    # Avoid division by zero
+    money_flow_ratio = positive_mf_sum / negative_mf_sum.replace(0, np.nan)
+
+    # Calculate MFI
+    mfi = 100.0 - (100.0 / (1.0 + money_flow_ratio))
+    # Handle cases where negative_mf_sum is 0 (MFI should be 100)
+    mfi[negative_mf_sum == 0] = 100.0
+    # Handle cases where both are 0 (or ratio is NaN due to division by zero) - typically set to 50 or previous value? Let's use NaN for now.
+    mfi[money_flow_ratio.isna()] = (
+        np.nan
+    )  # Or potentially 50? Check standard definitions. Using NaN is safer.
+
+    # Fill initial NaNs from rolling sum
+    mfi.iloc[: length - 1] = np.nan
+
+    logger.debug(f"Calculated MFI with length {length} using pandas/numpy.")
+    return mfi
 
 
 def calculate_technical_indicators(
@@ -60,9 +403,7 @@ def calculate_technical_indicators(
     Returns:
         DataFrame with added technical indicator columns.
     """
-    if not PANDAS_TA_AVAILABLE:
-        logger.error("pandas-ta not available for calculating indicators")
-        return df
+    # Removed PANDAS_TA_AVAILABLE check. ATR is implemented locally. Others are skipped.
 
     # Mapping from common config names to pandas-ta function names
     indicator_mapping = {
@@ -106,7 +447,6 @@ def calculate_technical_indicators(
     high_col = col_mapping["high"]
     low_col = col_mapping["low"]
     close_col = col_mapping["close"]
-    open_col = col_mapping["open"]
     volume_col = col_mapping["volume"]
 
     try:
@@ -126,29 +466,100 @@ def calculate_technical_indicators(
             params = {k: v for k, v in config.items() if k != "indicator"}
 
             try:
-                # Check if the function exists in pandas-ta
-                if not hasattr(ta, ta_indicator_name):
+                # --- Refactored Indicator Calculation ---
+                indicator_result = None  # Initialize
+
+                if ta_indicator_name == "atr":
+                    # Use the custom pandas/numpy ATR implementation
+                    atr_length = params.get(
+                        "length", 14
+                    )  # Get length from params or default
+                    indicator_result = _calculate_atr_pandas(
+                        high=result_df[high_col],
+                        low=result_df[low_col],
+                        close=result_df[close_col],
+                        length=atr_length,
+                    )
+                    if indicator_result is None or indicator_result.empty:
+                        logger.warning(
+                            f"Custom ATR calculation failed for length {atr_length}. Skipping."
+                        )
+                        continue
+                    # Ensure the result is a Series (ATR returns a Series)
+                    if not isinstance(indicator_result, pd.Series):
+                        logger.error(
+                            f"Custom ATR calculation returned unexpected type: {type(indicator_result)}. Skipping."
+                        )
+                        continue
+
+                # --- Call appropriate helper function ---
+                elif ta_indicator_name == "sma":
+                    sma_length = params.get("length", 50)  # Default SMA length
+                    indicator_result = _calculate_sma_pandas(
+                        series=result_df[close_col], length=sma_length
+                    )
+                elif ta_indicator_name == "ema":
+                    ema_length = params.get("length", 50)  # Default EMA length
+                    indicator_result = _calculate_ema_pandas(
+                        series=result_df[close_col], length=ema_length
+                    )
+                elif ta_indicator_name == "rsi":
+                    rsi_length = params.get("length", 14)  # Default RSI length
+                    indicator_result = _calculate_rsi_pandas(
+                        close=result_df[close_col], length=rsi_length
+                    )
+                elif ta_indicator_name == "macd":
+                    macd_fast = params.get("fast", 12)
+                    macd_slow = params.get("slow", 26)
+                    macd_signal = params.get("signal", 9)
+                    indicator_result = _calculate_macd_pandas(
+                        close=result_df[close_col],
+                        fast=macd_fast,
+                        slow=macd_slow,
+                        signal=macd_signal,
+                    )
+                elif ta_indicator_name == "bbands":
+                    bb_length = params.get("length", 20)
+                    bb_std = params.get("std", 2.0)
+                    indicator_result = _calculate_bbands_pandas(
+                        close=result_df[close_col], length=bb_length, std=bb_std
+                    )
+                elif ta_indicator_name == "adx":
+                    adx_length = params.get("length", 14)  # Default ADX length
+                    indicator_result = _calculate_adx_pandas(
+                        high=result_df[high_col],
+                        low=result_df[low_col],
+                        close=result_df[close_col],
+                        length=adx_length,
+                    )
+                elif ta_indicator_name == "obv":
+                    # OBV typically doesn't have parameters like length
+                    indicator_result = _calculate_obv_pandas(
+                        close=result_df[close_col], volume=result_df[volume_col]
+                    )
+                elif ta_indicator_name == "mfi":
+                    mfi_length = params.get("length", 14)  # Default MFI length
+                    indicator_result = _calculate_mfi_pandas(
+                        high=result_df[high_col],
+                        low=result_df[low_col],
+                        close=result_df[close_col],
+                        volume=result_df[volume_col],
+                        length=mfi_length,
+                    )
+                # --- Indicators still not implemented ---
+                elif ta_indicator_name in ["stoch", "vwap"]:  # Removed mfi, adx, obv
                     logger.warning(
-                        f"Indicator function '{ta_indicator_name}' (mapped from '{config_indicator_name}') not found in pandas-ta. Skipping."
+                        f"Indicator '{ta_indicator_name}' (from config '{config_indicator_name}') "
+                        f"is not yet implemented without pandas-ta. Skipping."
                     )
                     continue
-
-                indicator_func = getattr(ta, ta_indicator_name)
-
-                # Prepare arguments for the pandas-ta function
-                # Most functions accept high, low, close, volume, open as keyword args
-                kwargs = {
-                    "high": result_df[high_col],
-                    "low": result_df[low_col],
-                    "close": result_df[close_col],
-                    "volume": result_df[volume_col],
-                    "open": result_df[open_col],
-                    **params,  # Add specific indicator parameters
-                }
-
-                # Call the indicator function using keyword arguments
-                # pandas-ta functions are generally good at ignoring unused kwargs
-                indicator_result = indicator_func(**kwargs)
+                else:
+                    # Log warning for any other unknown/unhandled indicator
+                    logger.warning(
+                        f"Unknown or unhandled indicator '{ta_indicator_name}' (from config '{config_indicator_name}'). Skipping."
+                    )
+                    continue
+                # --- End Refactored Indicator Calculation ---
 
                 # --- Add results to DataFrame ---
                 if indicator_result is None:
@@ -167,17 +578,46 @@ def calculate_technical_indicators(
 
                 if isinstance(indicator_result, pd.DataFrame):
                     # Handle multi-column results (like MACD, BBands, ADX, Stoch)
-                    # Use pandas-ta's default column names, prefixed with our base name
+                    # Use the column names returned by the helper functions directly.
+                    # The helper functions are designed to return names similar to pandas-ta.
+                    # Prefixing with base_col_name might be redundant or incorrect if helpers already include parameters.
+                    # Example: _calculate_bbands returns 'BBL_20_2.0', 'BBM_20_2.0', 'BBU_20_2.0'
+                    # Example: _calculate_macd returns 'MACD_12_26', 'MACDs_9', 'MACDh_12_26_9'
+                    # We just need to assign these columns to the result_df.
                     for col in indicator_result.columns:
-                        # Clean up potential overlaps in naming (e.g., bbands result BBL_5_2.0)
-                        clean_col_suffix = col.replace(
-                            f"{ta_indicator_name.upper()}_", ""
-                        ).replace(f"{ta_indicator_name.lower()}_", "")
-                        result_df[f"{base_col_name}_{clean_col_suffix}"] = (
-                            indicator_result[col]
-                        )
+                        # Construct the final column name. Use the original config name and the suffix from the result.
+                        # This aims for clarity, e.g., 'bollinger_bands_BBL_20_2.0' if config was {'indicator': 'bollinger_bands', 'length': 20, 'std': 2.0}
+                        # However, the original code's base_col_name already includes params: 'bollinger_bands_length20_std2.0'
+                        # Let's stick to the original logic's base_col_name + cleaned suffix for consistency.
+                        # Clean the suffix coming from the helper function (e.g., remove 'MACD_12_26' -> '')
+                        # This cleaning logic might need refinement based on actual helper outputs.
+                        # Let's try a simpler approach: just use the columns as returned by the helpers, prefixed by the *original config name* only.
+                        # e.g., if config is {'indicator': 'macd', 'fast': 12, ...}, columns will be 'macd_MACD_12_26', 'macd_MACDs_9', etc.
+                        # This seems less prone to complex cleaning logic.
+
+                        # Alternative: Use the base_col_name (which includes params) and add the specific suffix part.
+                        # Example: base_col_name = 'macd_fast12_slow26_signal9'
+                        # Helper col = 'MACDs_9' -> final col = 'macd_fast12_slow26_signal9_MACDs_9' (a bit long)
+
+                        # Let's revert to the original logic's intention: base_col_name + cleaned suffix
+                        # base_col_name = f"{config_indicator_name}_{param_str}"
+                        # Example: base_col_name = "bollinger_bands_length20_std2.0"
+                        # Helper col = "BBL_20_2.0"
+                        # Clean suffix: "BBL_20_2.0".replace("BBANDS_","").replace("bbands_","") -> "BBL_20_2.0" (assuming ta_indicator_name is 'bbands')
+                        # Final col: "bollinger_bands_length20_std2.0_BBL_20_2.0" (Still very long)
+
+                        # --- Let's simplify the naming ---
+                        # Use the original config name + the column name from the helper function's DataFrame.
+                        # This keeps the indicator type clear and uses the specific component name from the helper.
+                        final_col_name = f"{config_indicator_name}_{col}"
+                        result_df[final_col_name] = indicator_result[col]
+
+                        # Example: config={'indicator': 'macd', ...} -> result_df['macd_MACD_12_26'], result_df['macd_MACDs_9'], ...
+                        # Example: config={'indicator': 'bollinger_bands', ...} -> result_df['bollinger_bands_BBL_20_2.0'], ...
+                        # Example: config={'indicator': 'adx', ...} -> result_df['adx_ADX_14'], result_df['adx_DMP_14'], ...
                 elif isinstance(indicator_result, pd.Series):
-                    # Handle single-column results (like SMA, RSI, ATR)
+                    # Handle single-column results (like SMA, RSI, ATR, OBV, MFI)
+                    # For OBV, base_col_name will just be 'obv' as it has no params
                     result_df[base_col_name] = indicator_result
                 else:
                     logger.warning(
@@ -186,33 +626,37 @@ def calculate_technical_indicators(
                     continue
 
                 # --- Special Handling for ATRr_10 ---
+                # --- Special Handling for ATRr (using the calculated ATR result) ---
+                # This block now runs *after* the ATR indicator_result has been calculated and added to result_df
                 if config_indicator_name.lower() == "atr":
-                    atr_length = params.get(
-                        "length", 14
-                    )  # Default ATR length in ta is 14
-                    atr_col_name = (
-                        f"atr_{'length'}{atr_length}"  # Match the generated name
-                    )
-                    if atr_col_name in result_df.columns:
+                    atr_length = params.get("length", 14)
+                    # Use the base_col_name which was just assigned to the ATR result series
+                    # Example: base_col_name might be 'atr_length14'
+                    if base_col_name in result_df.columns:
+                        atr_col = result_df[base_col_name]
+                        close_prices = result_df[close_col]
+
+                        # Calculate general ATRr (ATR / Close)
+                        atrr_col_name = f"ATRr_{atr_length}"
+                        result_df[atrr_col_name] = (
+                            atr_col / close_prices.replace(0, np.nan)
+                        ).fillna(0)
+                        logger.debug(f"Calculated {atrr_col_name} using custom ATR.")
+
                         # Calculate ATRr_10 specifically if length is 10
+                        # Note: The triple barrier might specifically look for 'ATRr_10'
                         if atr_length == 10:
-                            atr_col = result_df[atr_col_name]
-                            close_prices = result_df[close_col]
-                            # Avoid division by zero
+                            # Ensure the specific name 'ATRr_10' is used if length is 10
+                            # This might overwrite the general 'ATRr_10' if calculated above, which is fine.
                             result_df["ATRr_10"] = (
                                 atr_col / close_prices.replace(0, np.nan)
                             ).fillna(0)
-                            logger.debug("Calculated ATRr_10 column.")
-                        # Also calculate general ATRr if requested (any length)
-                        atr_col = result_df[atr_col_name]
-                        close_prices = result_df[close_col]
-                        result_df[f"ATRr_{atr_length}"] = (
-                            atr_col / close_prices.replace(0, np.nan)
-                        ).fillna(0)
-
+                            logger.debug(
+                                "Ensured ATRr_10 column exists using custom ATR."
+                            )
                     else:
                         logger.warning(
-                            f"Could not find calculated ATR column '{atr_col_name}' to compute ATRr."
+                            f"Could not find calculated ATR column '{base_col_name}' to compute ATRr."
                         )
 
                 calculated_count += 1
@@ -224,30 +668,8 @@ def calculate_technical_indicators(
                 )
                 # Continue to the next indicator
 
-        # --- Explicitly calculate ATRr_10 for triple barrier ---
-        # Ensure required columns are available before attempting calculation
-        if all(col in result_df.columns for col in [high_col, low_col, close_col]):
-            try:
-                atr_10 = ta.atr(
-                    result_df[high_col],
-                    result_df[low_col],
-                    result_df[close_col],
-                    length=10,
-                )
-                close_prices = result_df[close_col]
-                # Avoid division by zero and handle potential NaNs from ATR calculation
-                result_df["ATRr_10"] = (
-                    atr_10 / close_prices.replace(0, np.nan)
-                ).fillna(0)
-                logger.info("Successfully calculated explicit ATRr_10 column.")
-            except Exception as e_atr10:
-                logger.error(
-                    f"Error explicitly calculating ATRr_10: {e_atr10}", exc_info=True
-                )
-        else:
-            logger.warning(
-                "Could not calculate explicit ATRr_10 due to missing HLC columns."
-            )
+        # --- Explicit ATRr_10 calculation block removed ---
+        # This is now handled within the main indicator loop when 'atr' with length 10 is processed.
 
         logger.info(f"Successfully calculated {calculated_count} technical indicators.")
         return result_df
@@ -448,16 +870,12 @@ def calculate_market_regime_features(df: pd.DataFrame) -> Dict[str, pd.Series]:
     features["efficiency_ratio_10"] = calculate_efficiency_ratio(prices, 10)
     features["efficiency_ratio_20"] = calculate_efficiency_ratio(prices, 20)
 
-    # ADX for trend strength if pandas_ta available and HLC present
-    if PANDAS_TA_AVAILABLE and all(c in df.columns for c in ["high", "low", "close"]):
-        try:
-            adx = ta.adx(df["high"], df["low"], df["close"])
-            if isinstance(adx, pd.DataFrame) and len(adx.columns) >= 1:
-                features["adx_14"] = adx.iloc[:, 0]
-        except Exception as e:
-            logger.warning(f"Could not calculate ADX: {e}")
-    else:
-        features["adx_14"] = pd.Series(np.nan, index=prices.index)
+    # ADX calculation is now available via calculate_technical_indicators if configured.
+    # This function might still calculate other regime features, but ADX itself should be added via the main function.
+    logger.debug(
+        "ADX should be calculated via calculate_technical_indicators if needed for regime features."
+    )
+    # features["adx_14"] = pd.Series(np.nan, index=prices.index) # Remove placeholder if ADX is expected from main function
 
     # Simple trend detection (close > moving averages)
     sma50 = prices.rolling(50).mean()
@@ -617,28 +1035,11 @@ def calculate_pattern_features(df: pd.DataFrame) -> Dict[str, pd.Series]:
         "open"
     ]
 
-    # Candlestick patterns using pandas_ta
-    if PANDAS_TA_AVAILABLE:
-        try:
-            # Use the ta.cdl_pattern function which aggregates multiple patterns
-            # Or calculate specific ones if needed
-            # Example: Calculate Doji
-            doji = ta.cdl_doji(df["open"], df["high"], df["low"], df["close"])
-            if doji is not None:
-                features["pattern_doji"] = doji
-
-            # Example: Calculate Engulfing
-            engulfing = ta.cdl_engulfing(df["open"], df["high"], df["low"], df["close"])
-            if engulfing is not None:
-                features["pattern_engulfing"] = engulfing
-
-            # Example: Calculate Hammer
-            hammer = ta.cdl_hammer(df["open"], df["high"], df["low"], df["close"])
-            if hammer is not None:
-                features["pattern_hammer"] = hammer
-
-        except Exception as e:
-            logger.warning(f"Error calculating pandas-ta patterns: {e}")
+    # Candlestick patterns using pandas_ta removed.
+    logger.debug("Candlestick pattern calculation skipped (pandas-ta removed).")
+    # features["pattern_doji"] = pd.Series(np.nan, index=df.index) # Example placeholder
+    # features["pattern_engulfing"] = pd.Series(np.nan, index=df.index)
+    # features["pattern_hammer"] = pd.Series(np.nan, index=df.index)
 
     return features
 
@@ -661,44 +1062,15 @@ def calculate_momentum_features(df: pd.DataFrame) -> Dict[str, pd.Series]:
         return features
     price_col = "close"
 
-    # RSI for different timeframes
-    if PANDAS_TA_AVAILABLE:
-        for window in [7, 14, 21]:
-            try:
-                features[f"rsi_{window}"] = ta.rsi(df[price_col], length=window)
-            except Exception as e:
-                logger.warning(f"Error calculating RSI-{window}: {e}")
-
-        # Stochastic oscillator
-        if all(col in df.columns for col in ["high", "low", price_col]):
-            try:
-                stoch = ta.stoch(df["high"], df["low"], df[price_col], k=14, d=3)
-                if isinstance(stoch, pd.DataFrame) and len(stoch.columns) >= 2:
-                    features["stoch_k"] = stoch.iloc[:, 0]
-                    features["stoch_d"] = stoch.iloc[:, 1]
-            except Exception as e:
-                logger.warning(f"Error calculating Stochastic: {e}")
-
-        # MACD
-        try:
-            macd = ta.macd(df[price_col])
-            if isinstance(macd, pd.DataFrame) and len(macd.columns) >= 3:
-                features["macd"] = macd.iloc[:, 0]
-                features["macd_signal"] = macd.iloc[:, 1]
-                features["macd_histogram"] = macd.iloc[:, 2]
-        except Exception as e:
-            logger.warning(f"Error calculating MACD: {e}")
-
-        # Money Flow Index if volume available
-        if "volume" in df.columns and all(
-            col in df.columns for col in ["high", "low", price_col]
-        ):
-            try:
-                features["mfi_14"] = ta.mfi(
-                    df["high"], df["low"], df[price_col], df["volume"], length=14
-                )
-            except Exception as e:
-                logger.warning(f"Error calculating MFI: {e}")
+    # Momentum indicators (RSI, MACD) are now calculated in calculate_technical_indicators if configured.
+    # Stoch is still skipped. MFI is now available via calculate_technical_indicators.
+    logger.debug(
+        "Stochastic (Stoch) skipped (pandas-ta removed). MFI should be calculated via calculate_technical_indicators."
+    )
+    # Placeholders for skipped indicators if needed elsewhere, though they should ideally be added via calculate_technical_indicators
+    # features["stoch_k"] = pd.Series(np.nan, index=df.index)
+    # features["stoch_d"] = pd.Series(np.nan, index=df.index)
+    # features["mfi_14"] = pd.Series(np.nan, index=df.index) # Remove placeholder if MFI is expected from main function
 
     # Rate of Change (doesn't require pandas-ta)
     for window in [5, 10, 20]:
@@ -728,23 +1100,11 @@ def calculate_vwap_features(df: pd.DataFrame) -> Dict[str, pd.Series]:
     typical_price = (df["high"] + df["low"] + df["close"]) / 3
 
     # Calculate VWAP using pandas-ta if available (handles daily reset better potentially)
-    if PANDAS_TA_AVAILABLE:
-        try:
-            # Assuming daily data, anchor='D' might work. Needs testing.
-            # Or calculate manually if ta.vwap doesn't fit use case.
-            vwap_ta = ta.vwap(df["high"], df["low"], df["close"], df["volume"])
-            if vwap_ta is not None:
-                features["vwap_ta"] = vwap_ta
-                # Avoid division by zero or invalid values
-                vwap_safe = vwap_ta.replace(0, np.nan).reindex_like(
-                    df["close"]
-                )  # Align index
-                features["dist_from_vwap_ta"] = (df["close"] - vwap_safe) / vwap_safe
-
-        except Exception as e:
-            logger.warning(
-                f"Error calculating VWAP with pandas-ta: {e}. Falling back to rolling."
-            )
+    # VWAP calculation using pandas-ta removed. Rolling VWAP calculation remains.
+    # A dedicated VWAP helper could be added to calculate_technical_indicators if needed. VWAP is still skipped there.
+    logger.debug(
+        "VWAP calculation skipped in calculate_technical_indicators. Using rolling VWAP in calculate_vwap_features."
+    )
 
     # Fallback or additional rolling VWAP calculation
     for window in [20, 50]:  # Shorter windows for rolling VWAP

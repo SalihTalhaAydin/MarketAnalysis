@@ -38,10 +38,15 @@ def sample_feature_df():
 
 @pytest.fixture
 def sample_target_series(sample_feature_df):
-    """Target series matching the feature df index."""
+    """Target series matching the feature df index. Ensures balance for CV."""
+    # Ensure first 8 samples (typical train size) are balanced for CV=5
+    target_data = [0, 1, 0, 1, 0, 1, 0, 1] + list(
+        np.random.randint(0, 2, size=len(sample_feature_df) - 8)
+    )
     return pd.Series(
-        np.random.randint(0, 2, size=len(sample_feature_df)),
+        target_data[: len(sample_feature_df)],  # Ensure correct length
         index=sample_feature_df.index,
+        dtype=int,  # Ensure integer type
     )
 
 
@@ -66,7 +71,12 @@ def mock_preprocessing_config():
 @pytest.fixture
 def mock_optimization_config():
     """Basic optimization config."""
-    return {"method": "random", "params": {"n_iter": 5}, "cv": 3, "scoring": "accuracy"}
+    return {
+        "method": "random",
+        "params": {"n_iter": 5},
+        "cv": 3,
+        "scoring": "accuracy",
+    }  # Changed cv to 3
 
 
 # --- Mocks ---
@@ -284,7 +294,7 @@ def test_train_model_success(
     output_dir = str(tmp_path / "model_output")
     # Explicitly disable feature selection for this test
     fs_config = {"enabled": False}
-    model, importance, metrics = train_classification_model(
+    model, preprocessor, metrics, final_feature_names = train_classification_model(
         features=sample_feature_df,
         target=sample_target_series,
         model_config=mock_model_config,
@@ -294,8 +304,9 @@ def test_train_model_success(
     )
 
     assert model is not None
-    assert importance is not None
+    assert preprocessor is not None  # Check preprocessor instead of importance
     assert metrics is not None
+    assert isinstance(final_feature_names, list)  # Check the fourth return value
     assert "error" not in metrics
 
     # Check mocks
@@ -350,18 +361,24 @@ def test_train_model_with_optimization(
 ):
     """Test successful model training with hyperparameter optimization."""
     output_dir = str(tmp_path / "model_output_opt")
-    model, importance, metrics = train_classification_model(
+    model, preprocessor, metrics, final_feature_names = train_classification_model(
         features=sample_feature_df,
         target=sample_target_series,
         model_config=mock_model_config,
-        optimization_config=mock_optimization_config,
+        optimization_config={
+            "method": "random",
+            "params": {"n_iter": 5},
+            "cv": 3,
+            "scoring": "accuracy",
+        },  # Pass dict directly
         output_dir=output_dir,
         optimize_hyperparams=True,
     )
 
     assert model is not None  # optimize_hyperparameters returns the best model
-    assert importance is not None
+    assert preprocessor is not None  # Check preprocessor instead of importance
     assert metrics is not None
+    assert isinstance(final_feature_names, list)  # Check the fourth return value
     assert "error" not in metrics
 
     # Check optimize_hyperparameters was called with NumPy array
@@ -372,9 +389,11 @@ def test_train_model_with_optimization(
     assert isinstance(opt_call_args["X_train"], np.ndarray)  # Check X_train type
     assert isinstance(opt_call_args["y_train"], pd.Series)  # Check y_train type
 
-    mock_train_dependencies[
-        "create_model"
-    ].assert_not_called()  # create_model shouldn't be called if optimize is True
+    # Check that create_model WAS called with the best params from optimization
+    mock_train_dependencies["create_model"].assert_called_once_with(
+        mock_model_config["model_type"],
+        {"best_param": 1},  # Params returned by optimize mock
+    )
 
     # Check evaluation/importance called with DataFrames containing processed names
     evaluate_call_args = mock_train_dependencies["evaluate_classifier"].call_args_list
@@ -412,15 +431,17 @@ def test_train_model_data_split_fail(
     features_no_dt_index = sample_feature_df.reset_index(drop=True)
     target_no_dt_index = pd.Series([1] * len(features_no_dt_index))  # Match length
 
-    model, importance, metrics = train_classification_model(
+    model, preprocessor, metrics, final_feature_names = train_classification_model(
         features=features_no_dt_index,
         target=target_no_dt_index,
         optimize_hyperparams=False,
     )
-    # Check that the function returns None for model/importance and the error in metrics
+    # Check that the function returns None for model/preprocessor and the error in metrics
     assert model is None
-    assert importance is None
+    assert preprocessor is None  # Check preprocessor instead of importance
     assert metrics is not None
+    assert isinstance(final_feature_names, list)  # Should return empty list on failure
+    assert not final_feature_names  # Assert list is empty
     assert "error" in metrics
     assert "Data splitting failed" in metrics["error"]
 
@@ -434,15 +455,19 @@ def test_train_model_pipeline_fail(
         None,
         [],
     )  # Simulate failure
-    model, importance, metrics = train_classification_model(
+    model, preprocessor, metrics, final_feature_names = train_classification_model(
         features=sample_feature_df,
         target=sample_target_series,
         optimize_hyperparams=False,
     )
-    # Check that the function returns None for model/importance and the error in metrics
+    # Check that the function returns None for model/preprocessor and the error in metrics
     assert model is None
-    assert importance is None
+    assert preprocessor is None  # Check preprocessor instead of importance
     assert metrics is not None
+    assert isinstance(final_feature_names, list)  # Should return empty list on failure
+    assert not final_feature_names  # Assert list is empty
+    assert isinstance(final_feature_names, list)  # Should return empty list on failure
+    assert not final_feature_names  # Assert list is empty
     assert "error" in metrics
     assert "Preprocessing failed" in metrics["error"]
 
@@ -456,16 +481,16 @@ def test_train_model_training_fail(
     mock_model_instance.fit.side_effect = ValueError("Fit error")
     mock_train_dependencies["create_model"].return_value = mock_model_instance
 
-    model, importance, metrics = train_classification_model(
+    model, preprocessor, metrics, final_feature_names = train_classification_model(
         features=sample_feature_df,
         target=sample_target_series,
         optimize_hyperparams=False,
     )
-    # The function should return None for model/importance on critical failure,
+    # The function should return None for model/preprocessor on critical failure,
     # and the error message in the metrics dict.
-    # Check that the function returns None for model/importance and the error in metrics
+    # Check that the function returns None for model/preprocessor and the error in metrics
     assert model is None
-    assert importance is None
+    assert preprocessor is None  # Check preprocessor instead of importance
     assert metrics is not None
     assert "error" in metrics
     assert (

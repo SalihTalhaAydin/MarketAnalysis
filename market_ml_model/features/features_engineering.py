@@ -18,6 +18,7 @@ from .technical.indicators import (
     calculate_technical_indicators,
     calculate_volatility_features,
 )
+from .utils import filter_correlated_features  # Import the new function
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -41,11 +42,14 @@ def engineer_features(df: pd.DataFrame, feature_config: Dict[str, Any]) -> pd.Da
                 * ``max_holding_period`` (int): Max bars for target calculation.
                 * ``min_return_threshold`` (float, optional): For triple_barrier.
                 * ``threshold`` (float): For directional.
+            * ``correlation_filter`` (dict, optional): Configuration for correlation filtering.
+                * ``apply`` (bool): Whether to apply the filter.
+                * ``threshold`` (float): The absolute correlation threshold (e.g., 0.9).
 
     Returns:
         DataFrame with added features and target labels, ready for model input.
         NaN values in features are handled using forward fill followed by zero fill
-        before target calculation.
+        before target calculation. Correlated features may be removed if configured.
         Returns None if input is invalid or processing fails.
     """
     logger.info("Starting centralized feature engineering")
@@ -218,9 +222,50 @@ def engineer_features(df: pd.DataFrame, feature_config: Dict[str, Any]) -> pd.Da
             logger.warning(
                 "Differencing enabled but no features specified in 'differencing.features'."
             )
+
+    # 7. Correlation Filtering (Optional)
+    correlation_config = feature_config.get("correlation_filter", {})
+    if correlation_config.get("apply", False):
+        threshold = correlation_config.get("threshold", 0.9)  # Default threshold
+
+        logger.info(f"Applying correlation filtering with threshold: {threshold}")
+        # Ensure target column exists before filtering, if applicable
+        # Note: Target is calculated later, so we filter features *before* target creation.
+        # We need to identify feature columns vs potential target/metadata columns.
+        # Let's assume all columns except OHLCV and returns are potential features for now.
+        # A more robust approach might involve explicitly tracking feature columns.
+        base_cols = ["open", "high", "low", "close", "volume", "return", "log_return"]
+        feature_cols = [col for col in processed_df.columns if col not in base_cols]
+
+        if not feature_cols:
+            logger.warning("No feature columns identified for correlation filtering.")
+        else:
+            # Filter only the feature columns
+            features_df = processed_df[feature_cols]
+            original_feature_count = len(features_df.columns)
+            filtered_features_df = filter_correlated_features(
+                features_df, threshold=threshold
+            )
+            removed_count = original_feature_count - len(filtered_features_df.columns)
+
+            if removed_count > 0:
+                logger.info(
+                    f"Removed {removed_count} features due to high correlation (>{threshold})."
+                )
+                # Reconstruct processed_df with non-feature columns and filtered features
+                non_feature_cols = [
+                    col for col in processed_df.columns if col not in feature_cols
+                ]
+                processed_df = pd.concat(
+                    [processed_df[non_feature_cols], filtered_features_df], axis=1
+                )
+                # Ensure original column order if important, though usually not critical here
+            else:
+                logger.info("No features removed by correlation filtering.")
+
     # --- NaN Handling for Features (Before Target Calculation) ---
-    # Apply after all feature calculations but before target definition.
-    # This handles NaNs in generated features but allows specific handling for target inputs.
+    # Apply after all feature calculations and filtering, but before target definition.
+    # This handles NaNs in generated/remaining features.
     logger.info(
         f"Applying forward fill and zero fill for NaNs in FEATURES before target calculation. Shape: {processed_df.shape}"
     )

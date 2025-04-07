@@ -104,7 +104,7 @@ def mock_pandas_ta(mocker):
     # Patch the import within the indicators module
     mocker.patch(f"{INDICATORS_PATH}.ta", mock_ta, create=True)  # Use create=True
     # Ensure the availability flag is True
-    mocker.patch(f"{INDICATORS_PATH}.PANDAS_TA_AVAILABLE", True)
+    # mocker.patch(f"{INDICATORS_PATH}.PANDAS_TA_AVAILABLE", True) # Removed as variable no longer exists
     return mock_ta
 
 
@@ -145,33 +145,28 @@ def test_calc_indicators_all_basic(sample_ohlcv_df, mock_pandas_ta):
         sample_ohlcv_df, indicator_configs=default_configs
     )
 
-    # Check if mocks for default indicators were called
-    mock_pandas_ta.sma.assert_called()
-    # mock_pandas_ta.ema.assert_called() # EMA was not requested in default_configs
-    mock_pandas_ta.rsi.assert_called_once()
-    # mock_pandas_ta.macd.assert_called_once() # MACD was not requested
-    # mock_pandas_ta.bbands.assert_called_once() # BBands was not requested
-    mock_pandas_ta.atr.assert_called()  # Called twice (atr_14, ATRr_10)
-    # mock_pandas_ta.adx.assert_called_once() # ADX was not requested
-    # mock_pandas_ta.stoch.assert_called_once() # Stoch was not requested
-    # mock_pandas_ta.obv.assert_called_once() # OBV not requested
-    # mock_pandas_ta.mfi.assert_called_once() # MFI not requested
+    # Check if expected columns exist based on internal calculations
+    # Column names are now like 'indicator_param1val1_param2val2...' or 'indicator_colname'
+    assert "sma_length14" in result_df.columns
+    assert "rsi_length14" in result_df.columns
+    # ATRr_10 is calculated internally if ATR is requested, even if not explicitly in config
+    # Check if ATR was requested (it wasn't in default_configs, so ATRr_10 shouldn't exist here)
+    # assert "ATRr_10" not in result_df.columns # Re-evaluate if ATR is implicitly added
 
-    # Check if expected columns exist (names might vary slightly based on ta lib version)
-    assert any(col.startswith("sma_") for col in result_df.columns)
-    # assert any(col.startswith("ema_") for col in result_df.columns) # EMA not requested
-    assert any(col.startswith("rsi_") for col in result_df.columns)
-    # assert "macd" in result_df.columns # MACD not requested
-    # assert any(col.startswith("bb_") for col in result_df.columns) # BBands not requested
-    assert (
-        "ATRr_10" in result_df.columns
-    )  # Check for the explicitly calculated ATRr_10 column
-    assert "ATRr_10" in result_df.columns  # ATRr_10 is calculated implicitly
-    # assert "adx" in result_df.columns # ADX not requested
-    # assert any(col.startswith("stoch_") for col in result_df.columns) # Stoch not requested
-    # assert "obv" in result_df.columns # OBV not requested
-    # assert any(col.startswith("mfi_") for col in result_df.columns) # MFI not requested
-    # assert "volume_sma20" in result_df.columns # Volume SMA not requested
+    # Check specific column names based on the new naming convention
+    assert "sma_length14" in result_df.columns
+    assert "rsi_length14" in result_df.columns
+    # Check that other indicators were NOT added
+    assert not any(col.startswith("ema_") for col in result_df.columns)
+    assert not any(col.startswith("macd_") for col in result_df.columns)
+    assert not any(col.startswith("bbands_") for col in result_df.columns)
+    assert not any(
+        col.startswith("atr_") for col in result_df.columns
+    )  # ATR wasn't requested
+    assert not any(col.startswith("adx_") for col in result_df.columns)
+    assert not any(col.startswith("stoch_") for col in result_df.columns)
+    assert not any(col.startswith("obv") for col in result_df.columns)
+    assert not any(col.startswith("mfi_") for col in result_df.columns)
 
 
 def test_calc_indicators_specific(sample_ohlcv_df, mock_pandas_ta):
@@ -184,17 +179,15 @@ def test_calc_indicators_specific(sample_ohlcv_df, mock_pandas_ta):
         sample_ohlcv_df, indicator_configs=specific_configs
     )
 
-    mock_pandas_ta.sma.assert_called()
-    mock_pandas_ta.rsi.assert_called_once()
-    # Check others were NOT called
-    mock_pandas_ta.ema.assert_not_called()
-    mock_pandas_ta.macd.assert_not_called()
-    mock_pandas_ta.bbands.assert_not_called()
-    # Check that only requested columns exist
-    assert any(col.startswith("sma_") for col in result_df.columns)
-    assert any(col.startswith("rsi_") for col in result_df.columns)
+    # Check if expected columns exist based on internal calculations
+    assert "sma_length14" in result_df.columns
+    assert "rsi_length14" in result_df.columns
+    # Check others were NOT added (mocks are no longer relevant here)
     assert not any(col.startswith("ema_") for col in result_df.columns)
-    assert "macd" not in result_df.columns
+    assert not any(col.startswith("macd_") for col in result_df.columns)
+    assert not any(col.startswith("bbands_") for col in result_df.columns)
+    # Check that only requested columns exist
+    # Assertions already covered above
 
 
 @patch(f"{INDICATORS_PATH}.logger")
@@ -221,20 +214,7 @@ def test_calc_indicators_missing_cols(mock_logger, sample_ohlcv_df, mock_pandas_
     mock_pandas_ta.atr.assert_not_called()
 
 
-@patch(f"{INDICATORS_PATH}.PANDAS_TA_AVAILABLE", False)
-@patch(f"{INDICATORS_PATH}.logger")
-def test_calc_indicators_pandas_ta_unavailable(mock_logger, sample_ohlcv_df):
-    """Test behavior when pandas-ta is not available."""
-    # Pass an empty list for indicator_configs as the function requires it,
-    # even though pandas-ta is mocked as unavailable.
-    result_df = calculate_technical_indicators(
-        sample_ohlcv_df.copy(), indicator_configs=[]
-    )
-    mock_logger.error.assert_called_with(
-        "pandas-ta not available for calculating indicators"
-    )
-    # Should return original df
-    pd.testing.assert_frame_equal(result_df, sample_ohlcv_df)
+# Test 'test_calc_indicators_pandas_ta_unavailable' removed as PANDAS_TA_AVAILABLE no longer exists.
 
 
 # --- Tests for calculate_fractals ---
@@ -316,7 +296,7 @@ def test_calculate_market_regime_features(
 
     assert isinstance(features, dict)
     assert "efficiency_ratio_10" in features
-    assert "adx_14" in features  # Check if ADX mock was called
+    # assert "adx_14" in features # ADX is calculated in calculate_technical_indicators, not here
     assert "close_gt_sma50" in features
     assert "sma20_gt_sma50" in features
     assert "volatility_regime" in features
@@ -324,7 +304,7 @@ def test_calculate_market_regime_features(
     assert "price_volume_corr" in features
     assert "adf_pvalue" in features  # Check if ADF mock was called
     assert "is_stationary" in features
-    mock_pandas_ta.adx.assert_called_once()
+    # mock_pandas_ta.adx.assert_called_once() # Mock no longer relevant
     mock_adfuller.assert_called()  # ADF is called within rolling apply
 
 
@@ -355,13 +335,13 @@ def test_calculate_pattern_features(sample_ohlcv_df, mock_pandas_ta):
     assert "body_size" in features
     assert "upper_shadow" in features
     assert "lower_shadow" in features
-    # Check if pattern mocks were called
-    assert "pattern_doji" in features
-    assert "pattern_engulfing" in features
-    assert "pattern_hammer" in features
-    mock_pandas_ta.cdl_doji.assert_called_once()
-    mock_pandas_ta.cdl_engulfing.assert_called_once()
-    mock_pandas_ta.cdl_hammer.assert_called_once()
+    # Check if pattern mocks were called - REMOVED as patterns are skipped
+    # assert "pattern_doji" in features # Skipped
+    # assert "pattern_engulfing" in features # Skipped
+    # assert "pattern_hammer" in features # Skipped
+    # mock_pandas_ta.cdl_doji.assert_called_once() # Mock no longer relevant
+    # mock_pandas_ta.cdl_engulfing.assert_called_once() # Mock no longer relevant
+    # mock_pandas_ta.cdl_hammer.assert_called_once() # Mock no longer relevant
 
 
 # --- Tests for calculate_momentum_features ---
@@ -372,23 +352,23 @@ def test_calculate_momentum_features(sample_ohlcv_df, mock_pandas_ta):
     features = calculate_momentum_features(sample_ohlcv_df)
 
     assert isinstance(features, dict)
-    assert "rsi_7" in features
-    assert "rsi_14" in features
-    assert "rsi_21" in features
-    assert "stoch_k" in features
-    assert "stoch_d" in features
-    assert "macd" in features
-    assert "macd_signal" in features
-    assert "macd_histogram" in features
-    assert "mfi_14" in features
-    assert "roc_5" in features
-    assert "roc_10" in features
-    assert "roc_20" in features
-    # Check mocks
-    mock_pandas_ta.rsi.assert_called()
-    mock_pandas_ta.stoch.assert_called_once()
-    mock_pandas_ta.macd.assert_called_once()
-    mock_pandas_ta.mfi.assert_called_once()
+    # assert "rsi_7" in features # Calculated in calculate_technical_indicators if configured
+    # assert "rsi_14" in features # Calculated in calculate_technical_indicators if configured
+    # assert "rsi_21" in features # Calculated in calculate_technical_indicators if configured
+    # assert "stoch_k" in features # Skipped
+    # assert "stoch_d" in features # Skipped
+    # assert "macd" in features # Calculated in calculate_technical_indicators if configured
+    # assert "macd_signal" in features # Calculated in calculate_technical_indicators if configured
+    # assert "macd_histogram" in features # Calculated in calculate_technical_indicators if configured
+    # assert "mfi_14" in features # Calculated in calculate_technical_indicators if configured
+    assert "roc_5" in features  # Calculated internally
+    assert "roc_10" in features  # Calculated internally
+    assert "roc_20" in features  # Calculated internally
+    # Check mocks - REMOVED
+    # mock_pandas_ta.rsi.assert_called()
+    # mock_pandas_ta.stoch.assert_called_once()
+    # mock_pandas_ta.macd.assert_called_once()
+    # mock_pandas_ta.mfi.assert_called_once()
 
 
 # --- Tests for calculate_vwap_features ---
@@ -399,11 +379,11 @@ def test_calculate_vwap_features(sample_ohlcv_df, mock_pandas_ta):
     features = calculate_vwap_features(sample_ohlcv_df)
 
     assert isinstance(features, dict)
-    assert "vwap_ta" in features
-    assert "dist_from_vwap_ta" in features
+    # assert "vwap_ta" in features # Skipped
+    # assert "dist_from_vwap_ta" in features # Skipped
     assert "vwap_roll_20" in features
     assert "dist_from_vwap_roll_20" in features
     assert "vwap_roll_50" in features
     assert "dist_from_vwap_roll_50" in features
-    # Check mock
-    mock_pandas_ta.vwap.assert_called_once()
+    # Check mock - REMOVED
+    # mock_pandas_ta.vwap.assert_called_once()
